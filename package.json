@@ -4,7 +4,7 @@
   "description": "Instant HTML hosting with AI-powered visual editor",
   "private": true,
   "dependencies": {
-    "firebase-admin": "^12.6.0",
+    "firebase": "^10.12.2",
     "@google/generative-ai": "^0.21.0"
   }
 }
