@@ -1,5 +1,6 @@
 // /api/sites.js — lists all sites created by a browser ID
-const { initFirebase } = require("./_firebase");
+const { getDb } = require("./_firebase");
+const { collection, query, where, getDocs, orderBy, limit } = require("firebase/firestore");
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -10,29 +11,29 @@ module.exports = async (req, res) => {
 
   try {
     const browserId = req.query.browserId;
-    if (!browserId) {
-      return res.status(200).json({ sites: [] });
-    }
+    if (!browserId) return res.status(200).json({ sites: [] });
 
-    const { db } = initFirebase();
-    const snapshot = await db.collection("sites")
-      .where("browserId", "==", browserId)
-      .orderBy("createdAt", "desc")
-      .limit(50)
-      .get();
+    const db = getDb();
+    // Note: Firestore requires a composite index for where + orderBy.
+    // To avoid needing to create an index, we just use where and sort client-side.
+    const q = query(collection(db, "sites"), where("browserId", "==", browserId));
+    const snapshot = await getDocs(q);
 
     const sites = [];
     snapshot.forEach((doc) => {
-      const data = doc.data();
+      const d = doc.data();
       sites.push({
-        id: data.id,
-        title: data.title,
-        createdAt: data.createdAt,
-        expiresAt: data.expiresAt,
+        id: d.id,
+        title: d.title,
+        createdAt: d.createdAt,
+        expiresAt: d.expiresAt,
       });
     });
 
-    return res.status(200).json({ sites });
+    // Sort client-side (newest first)
+    sites.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+    return res.status(200).json({ sites: sites.slice(0, 50) });
   } catch (err) {
     console.error("[sites] Error:", err);
     return res.status(500).json({ error: err.message });

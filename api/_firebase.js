@@ -1,43 +1,30 @@
-// Shared Firebase Admin init — used by all /api routes
-// Reads credentials from Vercel environment variables.
-const admin = require("firebase-admin");
+// Shared Firebase init — uses the client SDK (firebase v10) with hardcoded config.
+// This runs server-side in Vercel serverless functions. The browser never sees
+// this code — only the HTTP response. Safe to hardcode as long as your GitHub
+// repo is private (or you don't mind the config being public — Firebase web
+// config is designed to be public anyway; security is enforced by Firestore Rules).
+
+const { initializeApp, getApps } = require("firebase/app");
+const { getFirestore } = require("firebase/firestore");
+
+// Your Firebase web app config — hardcoded, no env vars needed.
+const firebaseConfig = {
+  apiKey: "AIzaSyB7BBI11ZGrKJ3P24RF9ja49FWHeX3kImQ",
+  authDomain: "akaymightyy.firebaseapp.com",
+  projectId: "akaymightyy",
+  storageBucket: "akaymightyy.firebasestorage.app",
+  messagingSenderId: "256670145750",
+  appId: "1:256670145750:web:34579bad40ff78d5247d77",
+  measurementId: "G-WJVHPTEHTB"
+};
 
 let _db = null;
-let _storage = null;
 
-function initFirebase() {
-  if (_db) return { db: _db, storage: _storage };
-  
-  // Only initialize once
-  if (admin.apps.length === 0) {
-    // Use service account credentials from env vars
-    // Either set FIREBASE_SERVICE_ACCOUNT_JSON (the full JSON key)
-    // Or set individual FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY
-    const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-    
-    if (serviceAccountJson) {
-      // Parse the full service account JSON
-      const serviceAccount = JSON.parse(serviceAccountJson);
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        storageBucket: process.env.FIREBASE_STORAGE_BUCKET || `${serviceAccount.project_id}.appspot.com`,
-      });
-    } else {
-      // Use individual env vars
-      admin.initializeApp({
-        credential: admin.credential.cert({
-          projectId: process.env.FIREBASE_PROJECT_ID,
-          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-          privateKey: (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-        }),
-        storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-      });
-    }
-  }
-  
-  _db = admin.firestore();
-  _storage = admin.storage ? admin.storage() : null;
-  return { db: _db, storage: _storage };
+function getDb() {
+  if (_db) return _db;
+  const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+  _db = getFirestore(app);
+  return _db;
 }
 
-module.exports = { initFirebase, admin };
+module.exports = { getDb };
