@@ -1,0 +1,10 @@
+{
+  "name": "kayhost-html",
+  "version": "1.0.0",
+  "description": "Instant HTML hosting with AI-powered visual editor",
+  "private": true,
+  "dependencies": {
+    "firebase-admin": "^12.6.0",
+    "@google/generative-ai": "^0.21.0"
+  }
+}
