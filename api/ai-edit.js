@@ -10,8 +10,7 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // Use env var if set, otherwise use the hardcoded key.
-// Replace "YOUR_GEMINI_KEY_HERE" with your actual key from https://aistudio.google.com/apikey
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "YOUR_GEMINI_KEY_HERE";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "AQ.Ab8RN6LjZ6Jn2oiBrQj6GkkOzjJk31FqW1kZda3PkFNXjpMF8Q";
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
