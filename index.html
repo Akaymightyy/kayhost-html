@@ -1119,15 +1119,14 @@
   </script>
 
   <!-- ===== Firebase Auth + Admin (ESM module) ===== -->
+  <!-- Only imports firebase-app + firebase-auth. NO firestore client-side —
+       all DB operations go through /api/* server-side endpoints. -->
   <script type="module">
     import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import {
-      getAuth, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, signOut,
+      getAuth, onAuthStateChanged, signInWithPopup, signOut,
       GoogleAuthProvider, GithubAuthProvider,
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-    import {
-      getFirestore, doc, setDoc, getDoc, collection, getDocs,
-    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyB7BBI11ZGrKJ3P24RF9ja49FWHeX3kImQ",
@@ -1140,7 +1139,7 @@
 
     const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
     const auth = getAuth(app);
-    const db = getFirestore(app);
+    // NOTE: No Firestore client-side — all DB operations go through /api/* endpoints
 
     // Admin emails — replace with your real admin email(s)
     const ADMIN_EMAILS = ["kayhost@admin.com"];
@@ -1170,29 +1169,9 @@
       const authArea = document.getElementById("auth-area");
 
       if (user) {
-        // Check admin status
+        // Check admin status (email-only check, no Firestore needed)
         userIsAdmin = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
-        if (!userIsAdmin) {
-          try {
-            const adminDoc = await getDoc(doc(db, "admins", user.uid));
-            userIsAdmin = adminDoc.exists();
-          } catch (e) { /* ignore */ }
-        }
-
-        // Save user profile to Firestore if not already there
-        try {
-          const userDoc = await getDoc(doc(db, "users", user.uid));
-          if (!userDoc.exists()) {
-            await setDoc(doc(db, "users", user.uid), {
-              uid: user.uid,
-              email: user.email || "",
-              displayName: user.displayName || "",
-              photoURL: user.photoURL || "",
-              provider: user.providerData[0]?.providerId || "unknown",
-              createdAt: Date.now(),
-            });
-          }
-        } catch (e) { /* ignore */ }
+        // User profile is saved server-side by /api/signin or /api/admin
 
         // Update nav: show avatar + dropdown
         if (authArea) {
