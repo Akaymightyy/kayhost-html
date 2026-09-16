@@ -1,16 +1,16 @@
-// /api/media.js — uploads an image to Firebase Storage, returns public URL.
-// Uses the Firebase client SDK (hardcoded config).
-const { initializeApp, getApps } = require("firebase/app");
-const { getStorage, ref, uploadBytes, getDownloadURL } = require("firebase/storage");
+// /api/media.js — uploads an image to Cloudinary, returns public URL.
+// Uses unsigned upload (no API key/secret needed in the code — just cloud name + preset).
+//
+// Cloudinary credentials:
+//   Cloud Name:  ← find this on your Cloudinary dashboard (top of the page)
+//   Upload Preset: kayhost (unsigned, already created ✓)
+//   API Key: 652486594789793 (not needed for unsigned uploads)
+//   API Secret: MefO3eGxeofAvNNR-Bd--a4JXNs (not needed for unsigned uploads)
 
-const firebaseConfig = {
-  apiKey: "AIzaSyB7BBI11ZGrKJ3P24RF9ja49FWHeX3kImQ",
-  authDomain: "akaymightyy.firebaseapp.com",
-  projectId: "akaymightyy",
-  storageBucket: "akaymightyy.firebasestorage.app",
-  messagingSenderId: "256670145750",
-  appId: "1:256670145750:web:34579bad40ff78d5247d77",
-};
+// ⚠️ REPLACE THIS with your Cloud Name (it's at the top of your Cloudinary dashboard).
+// It's a string like "dkayhost" or "akaymightyy" — NOT a number.
+const CLOUDINARY_CLOUD_NAME = "REPLACE_WITH_YOUR_CLOUD_NAME";
+const CLOUDINARY_UPLOAD_PRESET = "kayhost";
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -20,24 +20,33 @@ module.exports = async (req, res) => {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
+    if (CLOUDINARY_CLOUD_NAME === "REPLACE_WITH_YOUR_CLOUD_NAME") {
+      return res.status(500).json({
+        error: "Cloudinary cloud name not set. Open api/media.js and replace REPLACE_WITH_YOUR_CLOUD_NAME with your cloud name (from your Cloudinary dashboard)."
+      });
+    }
+
     const { data, filename, mimeType } = req.body || {};
-    if (!data) return res.status(400).json({ error: "No image data provided" });
+    if (!data) return res.status(400).json({ error: "No image data" });
 
-    // Convert base64 to buffer
-    const buffer = Buffer.from(data.split(",")[1] || data, "base64");
-    const ext = (filename || "image").split(".").pop();
-    const path = `uploads/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    // Upload to Cloudinary using unsigned upload
+    const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
+    const formData = new (require("url").URLSearchParams)();
+    formData.append("file", data);
+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
 
-    // Init Firebase Storage
-    const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-    const storage = getStorage(app);
-    const storageRef = ref(storage, path);
+    const uploadRes = await fetch(cloudinaryUrl, {
+      method: "POST",
+      body: formData,
+    });
 
-    // Upload
-    await uploadBytes(storageRef, buffer, { contentType: mimeType || "image/png" });
-    const publicUrl = await getDownloadURL(storageRef);
+    if (!uploadRes.ok) {
+      const err = await uploadRes.text();
+      return res.status(500).json({ error: `Cloudinary error: ${err}` });
+    }
 
-    return res.status(200).json({ url: publicUrl });
+    const result = await uploadRes.json();
+    return res.status(200).json({ url: result.secure_url });
   } catch (err) {
     console.error("[media] Error:", err);
     return res.status(500).json({ error: err.message || "Upload failed" });
