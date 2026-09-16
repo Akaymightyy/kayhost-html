@@ -4,7 +4,8 @@
 const { getDb } = require("./_firebase");
 const { doc, setDoc, getDoc } = require("firebase/firestore");
 
-const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
+// Public client config — safe to hardcode, see api/_firebase.js note.
+const FIREBASE_API_KEY = "AIzaSyB7BBI11ZGrKJ3P24RF9ja49FWHeX3kImQ";
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -14,10 +15,6 @@ module.exports = async (req, res) => {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    if (!FIREBASE_API_KEY) {
-      return res.status(500).json({ error: "FIREBASE_API_KEY is not configured in Vercel environment variables." });
-    }
-
     const { email, password, displayName } = req.body || {};
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password required" });

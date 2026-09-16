@@ -8,14 +8,13 @@ const { getDb } = require("./_firebase");
 const { verifyRequestToken } = require("./_admin-firebase");
 const { collection, getDocs, doc, getDoc, setDoc, deleteDoc, updateDoc } = require("firebase/firestore");
 
-// Admin emails — replace with your real admin email(s), comma-separated,
-// set as the ADMIN_EMAILS environment variable in Vercel.
+// Admin emails — add your real admin email(s) here directly (comma-separated
+// inside the array). This isn't sensitive info, so hardcoding it is fine —
+// just make sure this file only ever contains emails, never passwords or keys.
 // This is a secondary allow-list; the primary source of truth is the
-// Firestore "admins" collection, which can be managed from the dashboard.
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
-  .split(",")
-  .map(e => e.trim().toLowerCase())
-  .filter(Boolean);
+// Firestore "admins" collection, which can be managed from the dashboard
+// (once you're in as the first admin, use "Make admin" to promote others).
+const ADMIN_EMAILS = ["awwalabdul891@gmail.com"];
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
