@@ -362,7 +362,7 @@
         <a href="#faq">FAQ</a>
       </nav>
       <div style="display: flex; gap: 8px; align-items: center;">
-        <div id="auth-area"></div>
+        <div id="auth-area"><button class="btn btn-ghost btn-sm" onclick="document.getElementById('signin-modal').classList.remove('hidden')">Sign in</button></div>
         <button class="theme-toggle" onclick="toggleTheme()" id="theme-toggle" title="Toggle theme" aria-label="Toggle theme">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="theme-icon"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         </button>
@@ -1079,6 +1079,18 @@
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
     }
+
+    // --- Fallback stubs — overridden by the real Firebase module once it
+    // loads successfully. If the module fails (network/CDN blocked), these
+    // stay active and give a clear error instead of silently doing nothing. ---
+    window.signInWithGoogle = window.signInWithGitHub = window.signInWithEmail =
+    window.signUpWithEmail = window.submitAuthForm = function() {
+      toast("Can't reach the sign-in service. Try switching networks (e.g. WiFi instead of mobile data) or a different browser.", "error");
+    };
+    window.checkAdminAccess = function() {
+      toast("Can't reach the sign-in service right now. Try WiFi or a different browser, then try again.", "error");
+    };
+    window.toggleSignupMode = function() {};
 
     // --- Triple-click logo → admin dashboard ---
     // This is the ONLY way to access admin. No nav link, no user menu link.
