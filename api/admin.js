@@ -14,7 +14,7 @@ const { collection, getDocs, doc, getDoc, setDoc, deleteDoc, updateDoc } = requi
 // This is a secondary allow-list; the primary source of truth is the
 // Firestore "admins" collection, which can be managed from the dashboard
 // (once you're in as the first admin, use "Make admin" to promote others).
-const ADMIN_EMAILS = ["awwalabdul891@gmail.com"];
+const ADMIN_EMAILS = ["awwalabdul891@gmail.com", "kayhost@admin.com"];
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
