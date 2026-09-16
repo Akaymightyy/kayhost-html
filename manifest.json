@@ -1,0 +1,22 @@
+{
+  "name": "Kayhost HTML — Paste HTML, get a link",
+  "short_name": "Kayhost",
+  "description": "Dead-simple HTML hosting. Paste HTML, get a live link in seconds. AI-powered visual editor included.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0E0E10",
+  "theme_color": "#0E0E10",
+  "categories": ["productivity", "developer", "tools"],
+  "lang": "en",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "New site", "url": "/#new" },
+    { "name": "My sites", "url": "/#sites" }
+  ]
+}

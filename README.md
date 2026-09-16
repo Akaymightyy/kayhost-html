@@ -20,12 +20,42 @@ service cloud.firestore {
       allow create: if true;
       allow update, delete: if true;
     }
+    match /users/{uid} {
+      allow read: if true;
+      allow create: if request.auth != null && request.auth.uid == uid;
+      allow update: if request.auth != null && request.auth.uid == uid;
+    }
+    match /admins/{uid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow delete: if request.auth != null;
+    }
+    match /audit/{logId} {
+      allow read: if true;
+      allow create: if true;
+    }
+    match /settings/{key} {
+      allow read: if true;
+      allow write: if true;
+    }
     match /{document=**} {
       allow read, write: if false;
     }
   }
 }
 ```
+
+**Also enable sign-in providers:**
+- Firebase Console → Authentication → Sign-in method
+- Enable **Email/Password** (for admin login with kayhost@admin.com)
+- Enable **Google** (add support email)
+- Enable **GitHub** (you'll need a GitHub OAuth App — see Firebase docs)
+
+**Create the admin account in Firebase Console:**
+- Authentication → Users → Add User
+- Email: `kayhost@admin.com`
+- Password: `363436`
+- This email is hardcoded as admin in `index.html` and `api/admin.js`
 
 ### 2. Cloudinary (for image uploads)
 1. Go to https://cloudinary.com → sign up (free tier = 25 credits/month)

@@ -6,6 +6,13 @@
   <meta name="theme-color" content="#0E0E10" id="meta-theme" />
   <title>Kayhost — Paste HTML, get a link</title>
   <meta name="description" content="Dead-simple HTML hosting. Paste HTML, get a live link in seconds. AI-powered visual editor included." />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/png" href="/icon-192.png" />
+  <link rel="icon" type="image/png" href="/icon-512.png" sizes="512x512" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Kayhost" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -214,11 +221,24 @@
     .preview-iframe { width: 100%; min-height: 360px; border: 0; background: white; }
     .preview-iframe.editing { outline: 2px dashed var(--purple); outline-offset: -2px; }
 
+    /* AI overlay — dims the page behind the panel */
+    .ai-overlay {
+      position: fixed; inset: 0; z-index: 99;
+      background: rgba(0, 0, 0, 0.5);
+      opacity: 0; pointer-events: none; transition: opacity 0.3s;
+    }
+    .ai-overlay.visible { opacity: 1; pointer-events: auto; }
+
     /* ===== AI panel ===== */
     .ai-panel {
-      position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-card);
-      border-top: 1px solid var(--border); padding: 16px 20px; z-index: 100;
-      transform: translateY(100%); transition: transform 0.3s; box-shadow: var(--shadow-lg);
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--bg-card); /* solid — no bleed-through */
+      border-top: 1px solid var(--border-strong); padding: 16px 20px;
+      z-index: 200; /* above overlay (99) and everything else */
+      transform: translateY(100%); transition: transform 0.3s;
+      box-shadow: var(--shadow-lg);
+      max-width: 720px; margin: 0 auto;
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     }
     .ai-panel.open { transform: translateY(0); }
     .ai-panel .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
@@ -327,17 +347,22 @@
   <!-- ===== Header ===== -->
   <header class="site-header">
     <div class="container-wide header-inner">
-      <a href="/" class="brand">
-        <span class="brand-mark">K</span>
+      <a href="/" class="brand" id="brand-logo" title="Kayhost">
+        <img src="/icon-192.png" alt="Kayhost" style="width:24px;height:24px;border-radius:6px;object-fit:cover;" />
         <span>kayhost</span>
       </a>
       <nav class="nav-links" id="nav-links">
         <button class="active" data-view="new" onclick="switchView('new')">New</button>
         <button data-view="sites" onclick="switchView('sites')">My Sites</button>
+        <button data-view="templates" onclick="switchView('templates')">Templates</button>
+        <button data-view="clipboard" onclick="switchView('clipboard')">Clipboard</button>
+        <button data-view="tools" onclick="switchView('tools')">Tools</button>
+        <button data-view="settings" onclick="switchView('settings')">Settings</button>
         <a href="#features">Features</a>
         <a href="#faq">FAQ</a>
       </nav>
       <div style="display: flex; gap: 8px; align-items: center;">
+        <div id="auth-area"></div>
         <button class="theme-toggle" onclick="toggleTheme()" id="theme-toggle" title="Toggle theme" aria-label="Toggle theme">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="theme-icon"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         </button>
@@ -359,14 +384,30 @@
       <div class="upload-ico">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       </div>
-      <h3>Paste HTML, drop a file, or upload a ZIP</h3>
+      <h3>Paste HTML, drop a file, or upload a folder</h3>
       <p>Just press Ctrl+V or click to upload</p>
       <div class="zone-actions">
         <button class="btn btn-purple btn-sm" onclick="event.stopPropagation(); showEditor()">Paste HTML</button>
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); document.getElementById('file-input').click()">Upload file</button>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); document.getElementById('folder-input').click()">Upload folder</button>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); showCloneModal()">Clone from URL</button>
       </div>
       <input type="file" id="file-input" accept=".html,.htm,.zip,image/*" />
+      <input type="file" id="folder-input" webkitdirectory multiple style="display:none" />
     </section>
+
+    <!-- Clone from URL modal -->
+    <div id="clone-modal" class="hidden" style="position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)this.classList.add('hidden')">
+      <div class="editor-card" style="max-width:440px;width:100%;">
+        <h3 style="font-size:17px;margin-bottom:8px;">Clone from URL</h3>
+        <p style="color:var(--fg-secondary);font-size:14px;margin-bottom:14px;">Paste a live page URL and we'll fetch its HTML and host a copy.</p>
+        <input class="input" id="clone-url" placeholder="https://example.com" style="margin-bottom:10px;" />
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost btn-block" onclick="document.getElementById('clone-modal').classList.add('hidden')">Cancel</button>
+          <button class="btn btn-purple btn-block" id="clone-go" onclick="doClone()">Fetch & host</button>
+        </div>
+      </div>
+    </div>
 
     <section class="editor-section" id="editor-section">
       <div class="editor-card">
@@ -468,7 +509,93 @@
     </div>
   </main>
 
+  <!-- ===== Templates view ===== -->
+  <main id="view-templates" class="container dashboard-view" style="padding-top: 32px;">
+    <h2 class="section-title">Templates</h2>
+    <p style="color: var(--fg-secondary); margin-bottom: 20px;">Start with a pre-built template. Click to load it into the editor.</p>
+    <div class="site-list" id="template-list" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+      <div class="editor-card" style="cursor: pointer; padding: 20px;" onclick="loadTemplate('landing')">
+        <h3 style="font-size: 15px; margin-bottom: 6px;">Landing page</h3>
+        <p style="color: var(--fg-secondary); font-size: 13px;">A clean hero section with a call-to-action button.</p>
+      </div>
+      <div class="editor-card" style="cursor: pointer; padding: 20px;" onclick="loadTemplate('portfolio')">
+        <h3 style="font-size: 15px; margin-bottom: 6px;">Portfolio</h3>
+        <p style="color: var(--fg-secondary); font-size: 13px;">Showcase your work with a card grid.</p>
+      </div>
+      <div class="editor-card" style="cursor: pointer; padding: 20px;" onclick="loadTemplate('contact')">
+        <h3 style="font-size: 15px; margin-bottom: 6px;">Contact card</h3>
+        <p style="color: var(--fg-secondary); font-size: 13px;">A vCard-style contact page with QR code.</p>
+      </div>
+      <div class="editor-card" style="cursor: pointer; padding: 20px;" onclick="loadTemplate('blank')">
+        <h3 style="font-size: 15px; margin-bottom: 6px;">Blank canvas</h3>
+        <p style="color: var(--fg-secondary); font-size: 13px;">Start from scratch with an empty HTML5 boilerplate.</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===== Clipboard view ===== -->
+  <main id="view-clipboard" class="container dashboard-view" style="padding-top: 32px;">
+    <h2 class="section-title">Clipboard</h2>
+    <p style="color: var(--fg-secondary); margin-bottom: 20px;">Your recent paste history is stored locally in your browser.</p>
+    <div class="site-list" id="clipboard-list">
+      <div class="empty-state"><h3>Nothing here yet</h3><p>Paste HTML on the New page to build up your clipboard.</p></div>
+    </div>
+  </main>
+
+  <!-- ===== Tools view ===== -->
+  <main id="view-tools" class="container dashboard-view" style="padding-top: 32px;">
+    <h2 class="section-title">Tools</h2>
+    <div class="site-list" style="display: grid; gap: 8px;">
+      <div class="editor-card" style="cursor: pointer;" onclick="switchView('new')">
+        <h3 style="font-size: 15px; margin-bottom: 4px;">HTML Minifier</h3>
+        <p style="color: var(--fg-secondary); font-size: 13px;">Strip whitespace and comments from your HTML.</p>
+      </div>
+      <div class="editor-card" style="cursor: pointer;" onclick="switchView('new')">
+        <h3 style="font-size: 15px; margin-bottom: 4px;">CSS Beautifier</h3>
+        <p style="color: var(--fg-secondary); font-size: 13px;">Format messy CSS into clean, readable code.</p>
+      </div>
+      <div class="editor-card" style="cursor: pointer;" onclick="switchView('new')">
+        <h3 style="font-size: 15px; margin-bottom: 4px;">QR Code Generator</h3>
+        <p style="color: var(--fg-secondary); font-size: 13px;">Generate a QR code for any URL or text.</p>
+      </div>
+      <div class="editor-card" style="cursor: pointer;" onclick="switchView('new')">
+        <h3 style="font-size: 15px; margin-bottom: 4px;">Meta Tag Builder</h3>
+        <p style="color: var(--fg-secondary); font-size: 13px;">Generate Open Graph + Twitter card meta tags.</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===== Settings view ===== -->
+  <main id="view-settings" class="container dashboard-view" style="padding-top: 32px;">
+    <h2 class="section-title">Settings</h2>
+    <div class="editor-card" style="margin-bottom: 12px;">
+      <h3 style="font-size: 15px; margin-bottom: 8px;">Appearance</h3>
+      <p style="color: var(--fg-secondary); font-size: 14px; margin-bottom: 12px;">Choose your preferred theme.</p>
+      <div class="ttl-row">
+        <div class="ttl-opt active" onclick="setTheme('dark')">Dark</div>
+        <div class="ttl-opt" onclick="setTheme('light')">Light</div>
+        <div class="ttl-opt" onclick="setTheme(system)">System</div>
+      </div>
+    </div>
+    <div class="editor-card" style="margin-bottom: 12px;">
+      <h3 style="font-size: 15px; margin-bottom: 8px;">Default expiry</h3>
+      <p style="color: var(--fg-secondary); font-size: 14px; margin-bottom: 12px;">Set the default TTL for new sites.</p>
+      <div class="ttl-row" id="settings-ttl-row">
+        <div class="ttl-opt" data-ttl="1d" onclick="setDefaultTtl('1d')">1 day</div>
+        <div class="ttl-opt active" data-ttl="7d" onclick="setDefaultTtl('7d')">7 days</div>
+        <div class="ttl-opt" data-ttl="30d" onclick="setDefaultTtl('30d')">30 days</div>
+        <div class="ttl-opt" data-ttl="never" onclick="setDefaultTtl('never')">Never</div>
+      </div>
+    </div>
+    <div class="editor-card">
+      <h3 style="font-size: 15px; margin-bottom: 8px;">Account</h3>
+      <p style="color: var(--fg-secondary); font-size: 14px;">You're using Kayhost anonymously. Your browser ID is <code id="settings-browser-id" style="font-family: monospace; color: var(--purple-text);"></code></p>
+      <p style="color: var(--fg-muted); font-size: 13px; margin-top: 8px;">No signup required — your sites are tracked by this ID in your browser.</p>
+    </div>
+  </main>
+
   <!-- ===== AI Panel ===== -->
+  <div class="ai-overlay" id="ai-overlay" onclick="closeAiPanel()"></div>
   <div class="ai-panel" id="ai-panel">
     <div class="head">
       <span class="title">AI editor</span>
@@ -480,6 +607,48 @@
       <button class="btn btn-purple" id="ai-apply" onclick="applyAiEdit()">Apply</button>
     </div>
   </div>
+
+  <!-- ===== Sign-in Modal ===== -->
+  <div id="signin-modal" class="hidden" style="position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)this.classList.add('hidden')">
+    <div class="editor-card" style="max-width:380px;width:100%;text-align:center;">
+      <img src="/icon-192.png" alt="Kayhost" style="width:48px;height:48px;border-radius:12px;margin:0 auto 16px;" />
+      <h3 style="font-size:18px;margin-bottom:6px;">Sign in to Kayhost</h3>
+      <p style="color:var(--fg-secondary);font-size:14px;margin-bottom:20px;">Save your sites across devices and manage your account.</p>
+      <button class="btn btn-ghost btn-block" style="margin-bottom:8px;" onclick="signInWithGoogle()" id="google-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/></svg>
+        Continue with Google
+      </button>
+      <button class="btn btn-ghost btn-block" onclick="signInWithGitHub()" id="github-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+        Continue with GitHub
+      </button>
+      <div style="margin:16px 0; border-top:1px solid var(--border); position:relative;">
+        <span style="position:absolute; top:-8px; left:50%; transform:translateX(-50%); background:var(--bg-card); padding:0 8px; color:var(--fg-muted); font-size:12px;">or</span>
+      </div>
+      <input class="input" id="email-input" type="email" placeholder="Email" style="margin-bottom:8px;" />
+      <input class="input" id="password-input" type="password" placeholder="Password" style="margin-bottom:10px;" />
+      <button class="btn btn-purple btn-block" onclick="signInWithEmail()" id="email-btn">Sign in with email</button>
+      <p style="color:var(--fg-muted);font-size:12px;margin-top:16px;">You can still use Kayhost without signing in — your sites are tracked by browser.</p>
+    </div>
+  </div>
+
+  <!-- ===== Admin Dashboard ===== -->
+  <main id="view-admin" class="container-wide dashboard-view" style="padding-top: 24px; display: none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+      <h2 class="section-title">Admin Dashboard</h2>
+      <button class="btn btn-ghost btn-sm" onclick="switchView('new')">Back to app</button>
+    </div>
+    <div style="display:flex;gap:4px;margin-bottom:20px;flex-wrap:wrap;" id="admin-tabs">
+      <button class="ttl-opt active" onclick="switchAdminTab('overview')">Overview</button>
+      <button class="ttl-opt" onclick="switchAdminTab('users')">Users</button>
+      <button class="ttl-opt" onclick="switchAdminTab('sites')">Sites</button>
+      <button class="ttl-opt" onclick="switchAdminTab('moderation')">Moderation</button>
+      <button class="ttl-opt" onclick="switchAdminTab('health')">Health</button>
+      <button class="ttl-opt" onclick="switchAdminTab('audit')">Audit Log</button>
+      <button class="ttl-opt" onclick="switchAdminTab('settings')">Settings</button>
+    </div>
+    <div id="admin-content"><div class="empty-state"><div class="spinner"></div></div></div>
+  </main>
 
   <!-- ===== Footer ===== -->
   <footer class="site-footer">
@@ -520,11 +689,23 @@
 
     // --- View switching ---
     function switchView(view) {
+      // Hide all views
+      ["new", "sites", "templates", "clipboard", "tools", "settings", "admin"].forEach(v => {
+        const el = document.getElementById("view-" + v);
+        if (el) { el.classList.remove("visible"); el.style.display = "none"; }
+      });
       document.getElementById("view-new").classList.toggle("hidden", view !== "new");
-      document.getElementById("view-sites").classList.toggle("visible", view === "sites");
+      // Show the selected view
+      const target = document.getElementById("view-" + view);
+      if (target) { target.classList.add("visible"); target.style.display = view === "admin" ? "block" : ""; }
+      // Update nav active state
       document.querySelectorAll("[data-view]").forEach(b => b.classList.toggle("active", b.dataset.view === view));
       document.getElementById("nav-links").classList.remove("open");
+      // Load data if needed
       if (view === "sites") loadSites();
+      if (view === "clipboard") loadClipboard();
+      if (view === "settings") showBrowserId();
+      if (view === "admin") { /* admin data loaded by the module script */ }
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
@@ -656,6 +837,7 @@
         toast("Click any element to edit with AI", "success");
         wireElementClicks(iframe);
         document.getElementById("ai-panel").classList.add("open");
+        document.getElementById("ai-overlay").classList.add("visible");
       } else {
         iframe.classList.remove("editing");
         btn.textContent = "AI edit";
@@ -664,6 +846,7 @@
     }
     function closeAiPanel() {
       document.getElementById("ai-panel").classList.remove("open");
+      document.getElementById("ai-overlay").classList.remove("visible");
       editing = false;
       document.getElementById("preview-iframe").classList.remove("editing");
       document.getElementById("ai-toggle").textContent = "AI edit";
@@ -730,8 +913,542 @@
         document.getElementById("html-input").value = text;
         currentHtml = text;
         showEditor();
+        saveToClipboard(text);
       }
     });
+
+    // --- Folder upload (multi-page) ---
+    document.getElementById("folder-input").addEventListener("change", async (e) => {
+      const files = Array.from(e.target.files);
+      if (!files.length) return;
+      // Find the main HTML file (index.html preferred)
+      const htmlFile = files.find(f => f.name === "index.html") || files.find(f => f.name.endsWith(".html") || f.name.endsWith(".htm"));
+      if (!htmlFile) { toast("No HTML file found in the folder", "error"); return; }
+      toast("Loading folder (" + files.length + " files)...", "info");
+      try {
+        let html = await htmlFile.text();
+        // For multi-page: collect all HTML files and embed them as data URIs
+        const otherHtml = files.filter(f => f !== htmlFile && (f.name.endsWith(".html") || f.name.endsWith(".htm")));
+        // Upload any images to Cloudinary and replace src
+        const images = files.filter(f => f.type.startsWith("image/"));
+        for (const img of images) {
+          try {
+            const reader = new FileReader();
+            const dataUrl = await new Promise((res, rej) => { reader.onload = () => res(reader.result); reader.onerror = rej; reader.readAsDataURL(img); });
+            // Try uploading to Cloudinary
+            try {
+              const upRes = await fetch("/api/media", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: dataUrl, filename: img.name, mimeType: img.type }) });
+              if (upRes.ok) {
+                const { url } = await upRes.json();
+                // Replace relative image paths with the Cloudinary URL
+                const imgPath = img.webkitRelativePath || img.name;
+                html = html.replace(new RegExp('src=["\']' + imgPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '["\']', 'g'), 'src="' + url + '"');
+              }
+            } catch (e) { /* Cloudinary not set up — keep data URL fallback */ }
+          } catch (e) {}
+        }
+        // CSS files: inline them
+        const cssFiles = files.filter(f => f.name.endsWith(".css"));
+        for (const css of cssFiles) {
+          const cssText = await css.text();
+          const cssPath = css.webkitRelativePath || css.name;
+          html = html.replace(new RegExp('<link[^>]*href=["\']' + cssPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '["\'][^>]*>', 'g'), '<style>\n' + cssText + '\n</style>');
+        }
+        // JS files: inline them
+        const jsFiles = files.filter(f => f.name.endsWith(".js"));
+        for (const js of jsFiles) {
+          const jsText = await js.text();
+          const jsPath = js.webkitRelativePath || js.name;
+          html = html.replace(new RegExp('<script[^>]*src=["\']' + jsPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '["\'][^>]*></script>', 'g'), '<script>\n' + jsText + '\n</script>');
+        }
+        // Load into editor
+        document.getElementById("html-input").value = html;
+        currentHtml = html;
+        showEditor();
+        toast("Folder loaded (" + files.length + " files merged)", "success");
+      } catch (err) { toast(err.message, "error"); }
+    });
+
+    // --- Clone from URL ---
+    function showCloneModal() { document.getElementById("clone-modal").classList.remove("hidden"); document.getElementById("clone-url").focus(); }
+    async function doClone() {
+      const url = document.getElementById("clone-url").value.trim();
+      if (!url) { toast("Enter a URL", "error"); return; }
+      const btn = document.getElementById("clone-go");
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Fetching...';
+      try {
+        // Fetch via our own API to avoid CORS issues
+        const res = await fetch("/api/clone", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
+        if (!res.ok) {
+          // If /api/clone doesn't exist, try direct fetch (may fail due to CORS)
+          const directRes = await fetch(url);
+          const html = await directRes.text();
+          document.getElementById("html-input").value = html;
+          currentHtml = html;
+          showEditor();
+          document.getElementById("clone-modal").classList.add("hidden");
+          toast("Cloned from " + url, "success");
+          return;
+        }
+        const { html } = await res.json();
+        document.getElementById("html-input").value = html;
+        currentHtml = html;
+        showEditor();
+        document.getElementById("clone-modal").classList.add("hidden");
+        toast("Cloned from " + url, "success");
+      } catch (err) {
+        toast("Couldn't fetch that URL (CORS). Try pasting the HTML manually.", "error");
+      }
+      finally { btn.disabled = false; btn.textContent = "Fetch & host"; }
+    }
+
+    // --- Templates ---
+    const TEMPLATES = {
+      landing: `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>My Landing Page</title>\n<style>\nbody{margin:0;font-family:system-ui,sans-serif;background:#0E0E10;color:#ECECEE;display:grid;place-items:center;min-height:100vh}\n.hero{text-align:center;padding:40px}\n.hero h1{font-size:48px;font-weight:700;letter-spacing:-0.03em;margin-bottom:12px}\n.hero p{color:#9CA3AF;font-size:18px;margin-bottom:24px}\n.hero a{display:inline-block;padding:12px 24px;background:#A78BFA;color:#0E0E10;border-radius:8px;font-weight:600;text-decoration:none}\n</style>\n</head>\n<body>\n<div class="hero">\n<h1>Your product, beautifully simple.</h1>\n<p>Explain what you do in one sentence. Then let them click.</p>\n<a href="#">Get started</a>\n</div>\n</body>\n</html>`,
+      portfolio: `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>Portfolio</title>\n<style>\nbody{margin:0;font-family:system-ui,sans-serif;background:#0E0E10;color:#ECECEE;padding:40px}\nh1{font-size:32px;margin-bottom:24px}\n.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px}\n.card{background:#16161A;border:1px solid #26262C;border-radius:12px;padding:20px}\n.card h3{font-size:16px;margin-bottom:6px}\n.card p{color:#9CA3AF;font-size:14px}\n</style>\n</head>\n<body>\n<h1>My Work</h1>\n<div class="grid">\n<div class="card"><h3>Project One</h3><p>A short description of this project.</p></div>\n<div class="card"><h3>Project Two</h3><p>Another cool thing I built.</p></div>\n<div class="card"><h3>Project Three</h3><p>And this one too.</p></div>\n</div>\n</body>\n</html>`,
+      contact: `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>Contact</title>\n<style>\nbody{margin:0;font-family:system-ui,sans-serif;background:#0E0E10;color:#ECECEE;display:grid;place-items:center;min-height:100vh}\n.card{text-align:center;padding:40px;background:#16161A;border:1px solid #26262C;border-radius:16px}\n.card h1{font-size:28px;margin-bottom:8px}\n.card p{color:#9CA3AF;margin-bottom:16px}\n.card a{color:#A78BFA;text-decoration:none;font-weight:600}\n</style>\n</head>\n<body>\n<div class="card">\n<h1>John Doe</h1>\n<p>Designer & Developer</p>\n<a href="mailto:john@example.com">john@example.com</a>\n</div>\n</body>\n</html>`,
+      blank: `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>My Page</title>\n</head>\n<body>\n\n</body>\n</html>`,
+    };
+    function loadTemplate(name) {
+      const html = TEMPLATES[name] || TEMPLATES.blank;
+      document.getElementById("html-input").value = html;
+      currentHtml = html;
+      showEditor();
+      saveToClipboard(html);
+      toast("Template loaded", "success");
+    }
+
+    // --- Clipboard (recent pastes stored in localStorage) ---
+    function saveToClipboard(html) {
+      try {
+        let clips = JSON.parse(localStorage.getItem("kayhost-clipboard") || "[]");
+        clips.unshift({ html: html.slice(0, 5000), preview: html.slice(0, 100).replace(/<[^>]+>/g, "").trim(), date: Date.now() });
+        clips = clips.slice(0, 10); // keep last 10
+        localStorage.setItem("kayhost-clipboard", JSON.stringify(clips));
+      } catch (e) {}
+    }
+    function loadClipboard() {
+      const list = document.getElementById("clipboard-list");
+      if (!list) return;
+      try {
+        const clips = JSON.parse(localStorage.getItem("kayhost-clipboard") || "[]");
+        if (!clips.length) { list.innerHTML = '<div class="empty-state"><h3>Nothing here yet</h3><p>Paste HTML on the New page to build up your clipboard.</p></div>'; return; }
+        list.innerHTML = "";
+        clips.forEach((clip, i) => {
+          const item = document.createElement("div");
+          item.className = "site-item";
+          item.style.cursor = "pointer";
+          item.innerHTML = '<div class="thumb">' + (i + 1) + '</div><div class="info"><div class="title">' + escapeHtml(clip.preview.slice(0, 60)) + '</div><div class="meta">' + new Date(clip.date).toLocaleDateString() + '</div></div><div class="actions"><button onclick="restoreClip(' + i + ')">load</button></div>';
+          list.appendChild(item);
+        });
+      } catch (e) {}
+    }
+    function restoreClip(i) {
+      try {
+        const clips = JSON.parse(localStorage.getItem("kayhost-clipboard") || "[]");
+        if (clips[i]) {
+          document.getElementById("html-input").value = clips[i].html;
+          currentHtml = clips[i].html;
+          switchView("new");
+          showEditor();
+          toast("Restored from clipboard", "success");
+        }
+      } catch (e) {}
+    }
+
+    // --- Settings helpers ---
+    function setDefaultTtl(ttl) {
+      currentTtl = ttl;
+      localStorage.setItem("kayhost-default-ttl", ttl);
+      document.querySelectorAll("#settings-ttl-row .ttl-opt").forEach(o => o.classList.toggle("active", o.dataset.ttl === ttl));
+      document.querySelectorAll("#ttl-row .ttl-opt").forEach(o => o.classList.toggle("active", o.dataset.ttl === ttl));
+      toast("Default expiry set", "success");
+    }
+    // Load saved TTL
+    const savedTtl = localStorage.getItem("kayhost-default-ttl");
+    if (savedTtl) { currentTtl = savedTtl; document.querySelectorAll("#ttl-row .ttl-opt").forEach(o => o.classList.toggle("active", o.dataset.ttl === savedTtl)); }
+
+    // Show browser ID in settings
+    function showBrowserId() { const el = document.getElementById("settings-browser-id"); if (el) el.textContent = getBrowserId(); }
+
+    // --- Service worker registration ---
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+    }
+
+    // --- Triple-click logo → admin dashboard ---
+    // This is the ONLY way to access admin. No nav link, no user menu link.
+    let _brandClickCount = 0;
+    document.addEventListener("DOMContentLoaded", function initTripleClick() {
+      const brand = document.getElementById("brand-logo");
+      if (!brand) { setTimeout(initTripleClick, 200); return; }
+      brand.addEventListener("click", function(e) {
+        e.preventDefault();
+        _brandClickCount++;
+        if (_brandClickCount >= 3) {
+          _brandClickCount = 0;
+          window._tripleClickAdmin = true;
+          // Trigger the admin check (handled by the Firebase auth module)
+          if (window.checkAdminAccess) window.checkAdminAccess();
+          else {
+            // If Firebase hasn't loaded yet, wait and retry
+            setTimeout(() => { if (window.checkAdminAccess) window.checkAdminAccess(); }, 1000);
+          }
+          return;
+        }
+        clearTimeout(brand._tcTimer);
+        brand._tcTimer = setTimeout(function() {
+          if (_brandClickCount === 1) {
+            // Single click → go home
+            window.scrollTo({ top: 0, behavior: "smooth" });
+            const view = document.getElementById("view-new");
+            if (view && view.classList.contains("hidden")) switchView("new");
+          }
+          _brandClickCount = 0;
+        }, 400);
+      });
+    });
+
+    // --- Route detection for /admin (still works via URL) ---
+    (function() {
+      const path = window.location.pathname;
+      if (path === "/admin") {
+        window._goToAdmin = true;
+      }
+    })();
+  </script>
+
+  <!-- ===== Firebase Auth + Admin (ESM module) ===== -->
+  <script type="module">
+    import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import {
+      getAuth, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, signOut,
+      GoogleAuthProvider, GithubAuthProvider,
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import {
+      getFirestore, doc, setDoc, getDoc, collection, getDocs,
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyB7BBI11ZGrKJ3P24RF9ja49FWHeX3kImQ",
+      authDomain: "akaymightyy.firebaseapp.com",
+      projectId: "akaymightyy",
+      storageBucket: "akaymightyy.firebasestorage.app",
+      messagingSenderId: "256670145750",
+      appId: "1:256670145750:web:34579bad40ff78d5247d77",
+    };
+
+    const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // Admin emails — replace with your real admin email(s)
+    const ADMIN_EMAILS = ["kayhost@admin.com"];
+
+    let currentUser = null;
+    let userIsAdmin = false;
+
+    // --- Auth state listener ---
+    onAuthStateChanged(auth, async (user) => {
+      currentUser = user;
+      const authArea = document.getElementById("auth-area");
+
+      if (user) {
+        // Check admin status
+        userIsAdmin = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
+        if (!userIsAdmin) {
+          try {
+            const adminDoc = await getDoc(doc(db, "admins", user.uid));
+            userIsAdmin = adminDoc.exists();
+          } catch (e) { /* ignore */ }
+        }
+
+        // Save user profile to Firestore if not already there
+        try {
+          const userDoc = await getDoc(doc(db, "users", user.uid));
+          if (!userDoc.exists()) {
+            await setDoc(doc(db, "users", user.uid), {
+              uid: user.uid,
+              email: user.email || "",
+              displayName: user.displayName || "",
+              photoURL: user.photoURL || "",
+              provider: user.providerData[0]?.providerId || "unknown",
+              createdAt: Date.now(),
+            });
+          }
+        } catch (e) { /* ignore */ }
+
+        // Update nav: show avatar + dropdown
+        if (authArea) {
+          const initial = (user.displayName || user.email || "U").charAt(0).toUpperCase();
+          authArea.innerHTML = `
+            <div style="position:relative;">
+              <button class="theme-toggle" onclick="document.getElementById('user-menu').classList.toggle('hidden')" style="display:flex;align-items:center;gap:6px;padding:4px 8px;">
+                ${user.photoURL
+                  ? `<img src="${user.photoURL}" alt="" style="width:24px;height:24px;border-radius:50%;object-fit:cover;" />`
+                  : `<span style="width:24px;height:24px;border-radius:50%;background:var(--purple);color:var(--bg);display:grid;place-items:center;font-size:12px;font-weight:700;">${initial}</span>`}
+                <span style="font-size:13px;color:var(--fg);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${user.displayName || user.email || "User"}</span>
+              </button>
+              <div id="user-menu" class="hidden" style="position:absolute;right:0;top:40px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:4px;z-index:50;min-width:140px;box-shadow:var(--shadow-lg);">
+                <button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;" onclick="document.getElementById('user-menu').classList.add('hidden');switchView('sites')">My Sites</button>
+                <button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;" onclick="document.getElementById('user-menu').classList.add('hidden');switchView('settings')">Settings</button>
+                ${userIsAdmin ? `` : ""}
+                <button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;color:var(--red);" onclick="doSignOut()">Sign out</button>
+              </div>
+            </div>
+          `;
+        }
+
+        // If we were trying to go to /admin
+        if (window._goToAdmin) {
+          if (userIsAdmin) { switchView("admin"); loadAdminData("overview"); }
+          else { window.location.href = "/"; }
+        }
+      } else {
+        // Not signed in
+        userIsAdmin = false;
+        if (authArea) {
+          authArea.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="document.getElementById('signin-modal').classList.remove('hidden')">Sign in</button>`;
+        }
+        if (window._goToAdmin) {
+          window.location.href = "/";
+        }
+      }
+    });
+
+    // --- Sign-in functions (exposed on window) ---
+    window.signInWithGoogle = async function() {
+      try {
+        await signInWithPopup(auth, new GoogleAuthProvider());
+        document.getElementById("signin-modal").classList.add("hidden");
+        toast("Signed in successfully", "success");
+      } catch (err) {
+        let msg = err.message || "Sign-in failed";
+        if (err.code === "auth/popup-closed-by-user") msg = "Sign-in cancelled";
+        if (err.code === "auth/popup-blocked") msg = "Popup blocked. Allow popups and try again.";
+        if (err.code === "auth/account-exists-with-different-credential") msg = "Account exists with a different provider. Try the other option.";
+        toast(msg, "error");
+      }
+    };
+
+    window.signInWithGitHub = async function() {
+      try {
+        await signInWithPopup(auth, new GithubAuthProvider());
+        document.getElementById("signin-modal").classList.add("hidden");
+        toast("Signed in successfully", "success");
+      } catch (err) {
+        let msg = err.message || "Sign-in failed";
+        if (err.code === "auth/popup-closed-by-user") msg = "Sign-in cancelled";
+        if (err.code === "auth/popup-blocked") msg = "Popup blocked. Allow popups and try again.";
+        toast(msg, "error");
+      }
+    };
+
+    window.signInWithEmail = async function() {
+      const email = document.getElementById("email-input").value.trim();
+      const password = document.getElementById("password-input").value;
+      if (!email || !password) { toast("Enter email and password", "error"); return; }
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+        document.getElementById("signin-modal").classList.add("hidden");
+        toast("Signed in successfully", "success");
+      } catch (err) {
+        let msg = err.message || "Sign-in failed";
+        if (err.code === "auth/invalid-credential" || err.code === "auth/wrong-password") msg = "Invalid email or password";
+        if (err.code === "auth/user-not-found") msg = "No account found with that email";
+        toast(msg, "error");
+      }
+    };
+
+    window.doSignOut = async function() {
+      await signOut(auth);
+      document.getElementById("user-menu")?.classList.add("hidden");
+      toast("Signed out", "info");
+    };
+
+    // --- Triple-click admin access check ---
+    // Called when user triple-clicks the logo. Only way to access admin.
+    window.checkAdminAccess = async function() {
+      if (!currentUser) {
+        // Not signed in → open sign-in modal
+        document.getElementById("signin-modal").classList.remove("hidden");
+        toast("Sign in to access admin", "info");
+        return;
+      }
+      if (userIsAdmin) {
+        // Already verified as admin → show dashboard
+        switchView("admin");
+        loadAdminData("overview");
+        toast("Admin access granted", "success");
+      } else {
+        // Signed in but not admin → redirect home (no error page)
+        toast("Not authorized", "error");
+        switchView("new");
+      }
+    };
+
+    // --- Admin dashboard ---
+    window.switchAdminTab = function(tab) {
+      document.querySelectorAll("#admin-tabs .ttl-opt").forEach(b => b.classList.remove("active"));
+      event.target.classList.add("active");
+      loadAdminData(tab);
+    };
+
+    async function loadAdminData(section) {
+      const content = document.getElementById("admin-content");
+      if (!content) return;
+      content.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
+      try {
+        const uid = currentUser?.uid || "anon";
+        const email = currentUser?.email || "anon";
+        const res = await fetch(`/api/admin?section=${section}&uid=${uid}&email=${encodeURIComponent(email)}`);
+        if (res.status === 403) {
+          content.innerHTML = '<div class="empty-state"><h3>Not authorized</h3><p>You need admin access to view this page.</p></div>';
+          return;
+        }
+        if (!res.ok) throw new Error("Failed to load admin data");
+        const data = await res.json();
+
+        if (section === "overview") renderOverview(content, data);
+        else if (section === "users") renderUsers(content, data);
+        else if (section === "sites") renderSites(content, data);
+        else if (section === "audit") renderAudit(content, data);
+        else if (section === "settings") renderAdminSettings(content, data);
+        else content.innerHTML = '<div class="empty-state"><h3>Coming soon</h3><p>This section will be populated with real data.</p></div>';
+      } catch (err) {
+        content.innerHTML = `<div class="empty-state"><h3>Load failed</h3><p>${escapeHtml(err.message)}</p></div>`;
+      }
+    }
+    window.loadAdminData = loadAdminData;
+
+    function escapeHtml(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+    function renderOverview(content, data) {
+      const s = data.sites || {};
+      const u = data.users || {};
+      const perDay = data.perDay || [];
+      const maxCount = Math.max(...perDay.map(d => d.count), 1);
+      content.innerHTML = `
+        <div class="feature-grid" style="margin-bottom:20px;">
+          <div class="feature-card"><h3 style="color:var(--purple-text);font-size:28px;margin-bottom:4px;">${u.total || 0}</h3><p style="font-size:13px;">Total users</p></div>
+          <div class="feature-card"><h3 style="color:var(--purple-text);font-size:28px;margin-bottom:4px;">${s.total || 0}</h3><p style="font-size:13px;">Total sites</p></div>
+          <div class="feature-card"><h3 style="color:var(--yellow-text);font-size:28px;margin-bottom:4px;">${s.active || 0}</h3><p style="font-size:13px;">Active sites</p></div>
+          <div class="feature-card"><h3 style="font-size:28px;margin-bottom:4px;color:var(--fg-muted);">${s.expired || 0}</h3><p style="font-size:13px;">Expired</p></div>
+        </div>
+        <div class="editor-card">
+          <h3 style="font-size:15px;margin-bottom:12px;">Sites deployed (last 30 days)</h3>
+          <div style="display:flex;align-items:flex-end;gap:2px;height:80px;overflow-x:auto;">
+            ${perDay.map(d => `<div style="flex:1;min-width:8px;height:${Math.max(2, (d.count / maxCount) * 80)}px;background:var(--purple);border-radius:2px 2px 0 0;opacity:${d.count > 0 ? 1 : 0.3};title="${d.date}: ${d.count}" title="${d.date}: ${d.count}"></div>`).join("")}
+          </div>
+          <p style="font-size:12px;color:var(--fg-muted);margin-top:8px;">${s.today || 0} deployed today · ${s.week || 0} this week · ${s.month || 0} this month</p>
+        </div>
+      `;
+    }
+
+    function renderUsers(content, data) {
+      const users = data.users || [];
+      if (!users.length) { content.innerHTML = '<div class="empty-state"><h3>No users yet</h3></div>'; return; }
+      content.innerHTML = `<div class="table-wrap" style="overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:500px;">
+          <thead><tr style="border-bottom:1px solid var(--border);">
+            <th style="padding:10px;text-align:left;font-weight:600;">User</th>
+            <th style="padding:10px;text-align:left;font-weight:600;">Provider</th>
+            <th style="padding:10px;text-align:left;font-weight:600;">Joined</th>
+            <th style="padding:10px;text-align:left;font-weight:600;">Actions</th>
+          </tr></thead>
+          <tbody>
+            ${users.map(u => `<tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:10px;"><div style="display:flex;align-items:center;gap:8px;">${u.photoURL ? `<img src="${escapeHtml(u.photoURL)}" style="width:24px;height:24px;border-radius:50%;" alt="" />` : ""}<div><div style="font-weight:500;">${escapeHtml(u.displayName || u.email || "Unknown")}</div><div style="font-size:11px;color:var(--fg-muted);">${escapeHtml(u.email || "")}</div></div></div></td>
+              <td style="padding:10px;color:var(--fg-secondary);">${escapeHtml((u.provider || "unknown").replace("firebase",""))}</td>
+              <td style="padding:10px;color:var(--fg-secondary);">${u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}</td>
+              <td style="padding:10px;">
+                <button class="btn btn-ghost btn-sm" onclick="adminAction('promoteAdmin','${escapeHtml(u.uid)}','${escapeHtml(u.email || "")}')" style="color:var(--purple-text);">Make admin</button>
+              </td>
+            </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>`;
+    }
+
+    function renderSites(content, data) {
+      const sites = data.sites || [];
+      if (!sites.length) { content.innerHTML = '<div class="empty-state"><h3>No sites yet</h3></div>'; return; }
+      content.innerHTML = `<div class="table-wrap" style="overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:600px;">
+          <thead><tr style="border-bottom:1px solid var(--border);">
+            <th style="padding:10px;text-align:left;font-weight:600;">Title</th>
+            <th style="padding:10px;text-align:left;font-weight:600;">Owner</th>
+            <th style="padding:10px;text-align:left;font-weight:600;">Created</th>
+            <th style="padding:10px;text-align:left;font-weight:600;">Status</th>
+            <th style="padding:10px;text-align:left;font-weight:600;">Actions</th>
+          </tr></thead>
+          <tbody>
+            ${sites.slice(0, 50).map(s => `<tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:10px;"><div style="font-weight:500;">${escapeHtml(s.title || "Untitled")}</div><div style="font-size:11px;color:var(--fg-muted);font-family:monospace;">/${escapeHtml(s.id || "")}</div></td>
+              <td style="padding:10px;color:var(--fg-secondary);">${escapeHtml(s.browserId || s.uid || "anonymous")}</td>
+              <td style="padding:10px;color:var(--fg-secondary);">${s.createdAt ? new Date(s.createdAt).toLocaleDateString() : "—"}</td>
+              <td style="padding:10px;">${s.expiresAt && s.expiresAt < Date.now() ? '<span style="color:var(--red);">Expired</span>' : '<span style="color:var(--purple-text);">Active</span>'}</td>
+              <td style="padding:10px;">
+                <a href="/site/${escapeHtml(s.id)}" target="_blank" style="font-size:12px;color:var(--fg-secondary);">view</a>
+                <button class="btn btn-ghost btn-sm" onclick="adminAction('deleteSite','${escapeHtml(s.id)}')" style="color:var(--red);font-size:12px;">delete</button>
+              </td>
+            </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>${sites.length > 50 ? `<p style="text-align:center;color:var(--fg-muted);font-size:12px;margin-top:8px;">Showing 50 of ${sites.length}</p>` : ""}`;
+    }
+
+    function renderAudit(content, data) {
+      const logs = data.logs || [];
+      if (!logs.length) { content.innerHTML = '<div class="empty-state"><h3>No actions logged yet</h3></div>'; return; }
+      content.innerHTML = `<div class="site-list">${logs.map(l => `<div class="site-item"><div class="thumb" style="font-size:10px;">${l.action ? l.action.charAt(0).toUpperCase() : "?"}</div><div class="info"><div class="title">${escapeHtml(l.action || "unknown")} — ${escapeHtml(l.targetType || "site")} ${escapeHtml(l.targetId || "")}</div><div class="meta">${l.adminEmail ? escapeHtml(l.adminEmail) + " · " : ""}${l.timestamp ? new Date(l.timestamp).toLocaleString() : ""}</div></div></div>`).join("")}</div>`;
+    }
+
+    function renderAdminSettings(content, data) {
+      const settings = data.settings || {};
+      content.innerHTML = `
+        <div class="editor-card" style="margin-bottom:12px;">
+          <h3 style="font-size:15px;margin-bottom:12px;">Feature Flags</h3>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:14px;"><input type="checkbox" ${settings.anonymousDeploys?.value !== false ? "checked" : ""} onchange="updateSetting('anonymousDeploys', this.checked)" /> Allow anonymous deploys</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:14px;"><input type="checkbox" ${settings.aiEditor?.value !== false ? "checked" : ""} onchange="updateSetting('aiEditor', this.checked)" /> Enable AI editor</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:14px;"><input type="checkbox" ${settings.maintenanceMode?.value === true ? "checked" : ""} onchange="updateSetting('maintenanceMode', this.checked)" /> Maintenance mode</label>
+          </div>
+        </div>
+        <div class="editor-card">
+          <h3 style="font-size:15px;margin-bottom:12px;">Admin Accounts</h3>
+          <p style="color:var(--fg-secondary);font-size:14px;margin-bottom:8px;">Admins are managed via the Users tab — click "Make admin" on any user to promote them.</p>
+          <p style="color:var(--fg-muted);font-size:13px;">Hardcoded admins: ${ADMIN_EMAILS.join(", ")}</p>
+        </div>
+      `;
+    }
+
+    window.adminAction = async function(action, targetId, adminEmail) {
+      if (!confirm(`${action} on ${targetId}?`)) return;
+      try {
+        const res = await fetch("/api/admin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action, targetId, adminEmail, uid: currentUser?.uid, email: currentUser?.email }),
+        });
+        if (!res.ok) throw new Error("Action failed");
+        toast("Action completed", "success");
+        // Reload current tab
+        const activeTab = document.querySelector("#admin-tabs .active");
+        if (activeTab) loadAdminData(activeTab.textContent.toLowerCase().replace(" ", ""));
+      } catch (err) { toast(err.message, "error"); }
+    };
+
+    window.updateSetting = async function(key, value) {
+      try {
+        await fetch("/api/admin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "updateSettings", settings: { [key]: value }, uid: currentUser?.uid, email: currentUser?.email }),
+        });
+        toast("Setting updated", "success");
+      } catch (err) { toast(err.message, "error"); }
+    };
   </script>
 </body>
 </html>
