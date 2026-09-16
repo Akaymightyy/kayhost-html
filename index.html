@@ -1145,8 +1145,10 @@
     const auth = getAuth(app);
     // NOTE: No Firestore client-side — all DB operations go through /api/* endpoints
 
-    // Admin emails — replace with your real admin email(s)
-    const ADMIN_EMAILS = ["kayhost@admin.com"];
+    // This is just for UI convenience (show/hide the Admin button) — the
+    // REAL check happens server-side in api/admin.js, which verifies your
+    // Firebase ID token and cannot be spoofed from the browser.
+    const ADMIN_EMAILS = ["awwalabdul891@gmail.com"];
 
     let currentUser = null;
     let userIsAdmin = false;
