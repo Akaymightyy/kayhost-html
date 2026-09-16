@@ -612,8 +612,8 @@
   <div id="signin-modal" class="hidden" style="position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)this.classList.add('hidden')">
     <div class="editor-card" style="max-width:380px;width:100%;text-align:center;">
       <img src="/icon-192.png" alt="Kayhost" style="width:48px;height:48px;border-radius:12px;margin:0 auto 16px;" />
-      <h3 style="font-size:18px;margin-bottom:6px;">Sign in to Kayhost</h3>
-      <p style="color:var(--fg-secondary);font-size:14px;margin-bottom:20px;">Save your sites across devices and manage your account.</p>
+      <h3 style="font-size:18px;margin-bottom:6px;" id="signin-title">Sign in to Kayhost</h3>
+      <p style="color:var(--fg-secondary);font-size:14px;margin-bottom:20px;" id="signin-subtitle">Save your sites across devices and manage your account.</p>
       <button class="btn btn-ghost btn-block" style="margin-bottom:8px;" onclick="signInWithGoogle()" id="google-btn">
         <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/></svg>
         Continue with Google
@@ -625,10 +625,14 @@
       <div style="margin:16px 0; border-top:1px solid var(--border); position:relative;">
         <span style="position:absolute; top:-8px; left:50%; transform:translateX(-50%); background:var(--bg-card); padding:0 8px; color:var(--fg-muted); font-size:12px;">or</span>
       </div>
+      <input class="input" id="signup-name-input" type="text" placeholder="Name" style="margin-bottom:8px;display:none;" />
       <input class="input" id="email-input" type="email" placeholder="Email" style="margin-bottom:8px;" />
       <input class="input" id="password-input" type="password" placeholder="Password" style="margin-bottom:10px;" />
-      <button class="btn btn-purple btn-block" onclick="signInWithEmail()" id="email-btn">Sign in with email</button>
-      <p style="color:var(--fg-muted);font-size:12px;margin-top:16px;">You can still use Kayhost without signing in — your sites are tracked by browser.</p>
+      <button class="btn btn-purple btn-block" onclick="submitAuthForm()" id="email-btn">Sign in with email</button>
+      <p style="color:var(--fg-muted);font-size:13px;margin-top:14px;" id="signin-toggle-text">
+        Don't have an account? <a href="#" onclick="event.preventDefault();toggleSignupMode()" style="color:var(--purple-text);text-decoration:underline;">Create one</a>
+      </p>
+      <p style="color:var(--fg-muted);font-size:12px;margin-top:10px;">You can still use Kayhost without signing in — your sites are tracked by browser.</p>
     </div>
   </div>
 
@@ -1146,6 +1150,37 @@
 
     let currentUser = null;
     let userIsAdmin = false;
+    let isSignupMode = false;
+
+    // --- Get a fresh Firebase ID token for authenticated API calls ---
+    // Used for every /api/admin request instead of sending raw uid/email —
+    // the server verifies this token itself, it never trusts client claims.
+    window.getIdToken = async function() {
+      if (auth.currentUser) {
+        try { return await auth.currentUser.getIdToken(); } catch (e) {}
+      }
+      // Fall back to the REST sign-in session (email/password flow)
+      const stored = localStorage.getItem("kayhost-user");
+      if (stored) {
+        try { return (JSON.parse(stored) || {}).idToken || null; } catch (e) {}
+      }
+      return null;
+    };
+
+    window.toggleSignupMode = function() {
+      isSignupMode = !isSignupMode;
+      document.getElementById("signin-title").textContent = isSignupMode ? "Create your Kayhost account" : "Sign in to Kayhost";
+      document.getElementById("signin-subtitle").textContent = isSignupMode ? "Sign up to save your sites across devices." : "Save your sites across devices and manage your account.";
+      document.getElementById("signup-name-input").style.display = isSignupMode ? "block" : "none";
+      document.getElementById("email-btn").textContent = isSignupMode ? "Create account" : "Sign in with email";
+      document.getElementById("signin-toggle-text").innerHTML = isSignupMode
+        ? 'Already have an account? <a href="#" onclick="event.preventDefault();toggleSignupMode()" style="color:var(--purple-text);text-decoration:underline;">Sign in</a>'
+        : 'Don\'t have an account? <a href="#" onclick="event.preventDefault();toggleSignupMode()" style="color:var(--purple-text);text-decoration:underline;">Create one</a>';
+    };
+
+    window.submitAuthForm = function() {
+      return isSignupMode ? signUpWithEmail() : signInWithEmail();
+    };
 
     // --- Auth state listener ---
     // Also check localStorage for REST API session (bypasses reCAPTCHA)
@@ -1297,7 +1332,7 @@
       const errDiv = document.createElement("div");
       errDiv.className = "auth-error";
       errDiv.style.cssText = "margin-top:16px;padding:14px;border-radius:10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);color:#F87171;font-size:13px;line-height:1.5;";
-      errDiv.innerHTML = '<strong>Sign-in failed:</strong><br/>' + escapeHtml(message) + '<br/><br/><details style="color:#8B8B9A;font-size:12px;"><summary>Setup checklist</summary><ul style="margin-top:8px;padding-left:16px;"><li>1. Firebase Console → Authentication → Sign-in method → Enable Email/Password</li><li>2. Firebase Console → Authentication → Users → Add User (kayhost@admin.com / 363438)</li><li>3. Firebase Console → Authentication → Settings → Authorized domains → Add ' + escapeHtml(window.location.hostname) + '</li><li>4. Firebase Console → Authentication → Sign-in method → Enable Google</li></ul></details>';
+      errDiv.innerHTML = '<strong>Sign-in failed:</strong><br/>' + escapeHtml(message) + '<br/><br/><details style="color:#8B8B9A;font-size:12px;"><summary>Setup checklist</summary><ul style="margin-top:8px;padding-left:16px;"><li>1. Firebase Console → Authentication → Sign-in method → Enable Email/Password</li><li>2. Don\'t have an account? Use the "Create one" link below to sign up.</li><li>3. Firebase Console → Authentication → Settings → Authorized domains → Add ' + escapeHtml(window.location.hostname) + '</li><li>4. Firebase Console → Authentication → Sign-in method → Enable Google</li></ul></details>';
       card.appendChild(errDiv);
       toast(message, "error");
     }
@@ -1390,6 +1425,62 @@
       }
     };
 
+    window.signUpWithEmail = async function() {
+      const name = document.getElementById("signup-name-input").value.trim();
+      const email = document.getElementById("email-input").value.trim();
+      const password = document.getElementById("password-input").value;
+      if (!email || !password) { toast("Enter email and password", "error"); return; }
+      const btn = document.getElementById("email-btn");
+      if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Creating account...'; }
+      try {
+        const res = await fetch("/api/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password, displayName: name }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || "Sign-up failed");
+        }
+        const userData = await res.json();
+        localStorage.setItem("kayhost-user", JSON.stringify(userData));
+        currentUser = {
+          uid: userData.uid,
+          email: userData.email,
+          displayName: userData.displayName || "",
+          photoURL: userData.photoURL || "",
+          providerData: [{ providerId: "password" }],
+        };
+        userIsAdmin = ADMIN_EMAILS.includes((userData.email || "").toLowerCase());
+        const authArea = document.getElementById("auth-area");
+        if (authArea) {
+          const initial = (userData.displayName || userData.email || "U").charAt(0).toUpperCase();
+          var avatarHtml = userData.photoURL
+            ? '<img src="' + escapeHtml(userData.photoURL) + '" alt="" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0;" />'
+            : '<span style="width:24px;height:24px;border-radius:50%;background:var(--purple);color:var(--bg);display:grid;place-items:center;font-size:12px;font-weight:700;flex-shrink:0;">' + escapeHtml(initial) + '</span>';
+          var name2 = userData.displayName || userData.email || "User";
+          var adminBtn = userIsAdmin ? '<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;color:var(--purple-text);" onclick="document.getElementById(\'user-menu\').classList.add(\'hidden\');switchView(\'admin\');loadAdminData(\'overview\')">Admin</button>' : '';
+          authArea.innerHTML = '<div style="position:relative;">' +
+            '<button class="theme-toggle" onclick="document.getElementById(\'user-menu\').classList.toggle(\'hidden\')" style="display:flex;align-items:center;gap:6px;padding:4px 8px;">' +
+            avatarHtml +
+            '<span style="font-size:13px;color:var(--fg);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(name2) + '</span>' +
+            '</button>' +
+            '<div id="user-menu" class="hidden" style="position:absolute;right:0;top:40px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:4px;z-index:50;min-width:140px;box-shadow:var(--shadow-lg);">' +
+            '<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;" onclick="document.getElementById(\'user-menu\').classList.add(\'hidden\');switchView(\'sites\')">My Sites</button>' +
+            '<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;" onclick="document.getElementById(\'user-menu\').classList.add(\'hidden\');switchView(\'settings\')">Settings</button>' +
+            adminBtn +
+            '<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;color:var(--red);" onclick="doSignOut()">Sign out</button>' +
+            '</div></div>';
+        }
+        document.getElementById("signin-modal").classList.add("hidden");
+        toast("Account created — signed in", "success");
+      } catch (err) {
+        showAuthErrorInModal(err.message || "Sign-up failed");
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = isSignupMode ? "Create account" : "Sign in with email"; }
+      }
+    };
+
     window.doSignOut = async function() {
       localStorage.removeItem("kayhost-user");
       try { await signOut(auth); } catch (e) {}
@@ -1436,10 +1527,15 @@
       if (!content) return;
       content.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
       try {
-        const uid = currentUser?.uid || "anon";
-        const email = currentUser?.email || "anon";
-        const res = await fetch(`/api/admin?section=${section}&uid=${uid}&email=${encodeURIComponent(email)}`);
-        if (res.status === 403) {
+        const idToken = await getIdToken();
+        if (!idToken) {
+          content.innerHTML = '<div class="empty-state"><h3>Not authorized</h3><p>Sign in again to access admin.</p></div>';
+          return;
+        }
+        const res = await fetch(`/api/admin?section=${section}`, {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        if (res.status === 403 || res.status === 401) {
           content.innerHTML = '<div class="empty-state"><h3>Not authorized</h3><p>You need admin access to view this page.</p></div>';
           return;
         }
@@ -1563,10 +1659,12 @@
     window.adminAction = async function(action, targetId, adminEmail) {
       if (!confirm(`${action} on ${targetId}?`)) return;
       try {
+        const idToken = await getIdToken();
+        if (!idToken) { toast("Sign in again to continue", "error"); return; }
         const res = await fetch("/api/admin", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action, targetId, adminEmail, uid: currentUser?.uid, email: currentUser?.email }),
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+          body: JSON.stringify({ action, targetId, adminEmail }),
         });
         if (!res.ok) throw new Error("Action failed");
         toast("Action completed", "success");
@@ -1578,10 +1676,12 @@
 
     window.updateSetting = async function(key, value) {
       try {
+        const idToken = await getIdToken();
+        if (!idToken) { toast("Sign in again to continue", "error"); return; }
         await fetch("/api/admin", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "updateSettings", settings: { [key]: value }, uid: currentUser?.uid, email: currentUser?.email }),
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+          body: JSON.stringify({ action: "updateSettings", settings: { [key]: value } }),
         });
         toast("Setting updated", "success");
       } catch (err) { toast(err.message, "error"); }
