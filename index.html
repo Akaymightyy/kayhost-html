@@ -959,7 +959,7 @@
         for (const js of jsFiles) {
           const jsText = await js.text();
           const jsPath = js.webkitRelativePath || js.name;
-          html = html.replace(new RegExp('<script[^>]*src=["\']' + jsPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '["\'][^>]*></script>', 'g'), '<script>\n' + jsText + '\n</script>');
+          html = html.replace(new RegExp('<script[^>]*src=["\']' + jsPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '["\'][^>]*><\\/script>', 'g'), '<script>\n' + jsText + '\n<\/script>');
         }
         // Load into editor
         document.getElementById("html-input").value = html;
@@ -1185,8 +1185,8 @@
             <div style="position:relative;">
               <button class="theme-toggle" onclick="document.getElementById('user-menu').classList.toggle('hidden')" style="display:flex;align-items:center;gap:6px;padding:4px 8px;">
                 ${user.photoURL
-                  ? `<img src="${user.photoURL}" alt="" style="width:24px;height:24px;border-radius:50%;object-fit:cover;" />`
-                  : `<span style="width:24px;height:24px;border-radius:50%;background:var(--purple);color:var(--bg);display:grid;place-items:center;font-size:12px;font-weight:700;">${initial}</span>`}
+                  ? `<img src="${user.photoURL}" alt="" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0;" />`
+                  : `<span style="width:24px;height:24px;border-radius:50%;background:var(--purple);color:var(--bg);display:grid;place-items:center;font-size:12px;font-weight:700;flex-shrink:0;">${initial}</span>`}
                 <span style="font-size:13px;color:var(--fg);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${user.displayName || user.email || "User"}</span>
               </button>
               <div id="user-menu" class="hidden" style="position:absolute;right:0;top:40px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:4px;z-index:50;min-width:140px;box-shadow:var(--shadow-lg);">

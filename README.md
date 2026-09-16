@@ -57,6 +57,12 @@ service cloud.firestore {
 - Password: `363436`
 - This email is hardcoded as admin in `index.html` and `api/admin.js`
 
+**Add your domain to authorized domains:**
+- Authentication → Settings → Authorized domains
+- Add `kayhosthtml.zone.id` (or whatever your custom domain is)
+- Add `your-project.vercel.app` (your Vercel URL)
+- Without this, Google/GitHub sign-in will fail with a 400 error on your custom domain
+
 ### 2. Cloudinary (for image uploads)
 1. Go to https://cloudinary.com → sign up (free tier = 25 credits/month)
 2. Dashboard → copy your **Cloud Name**
