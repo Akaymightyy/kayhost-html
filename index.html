@@ -1160,7 +1160,7 @@
     // This is just for UI convenience (show/hide the Admin button) — the
     // REAL check happens server-side in api/admin.js, which verifies your
     // Firebase ID token and cannot be spoofed from the browser.
-    const ADMIN_EMAILS = ["awwalabdul891@gmail.com"];
+    const ADMIN_EMAILS = ["awwalabdul891@gmail.com", "kayhost@admin.com"];
 
     let currentUser = null;
     let userIsAdmin = false;
@@ -1236,7 +1236,7 @@
               <div id="user-menu" class="hidden" style="position:absolute;right:0;top:40px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:4px;z-index:50;min-width:140px;box-shadow:var(--shadow-lg);">
                 <button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;" onclick="document.getElementById('user-menu').classList.add('hidden');switchView('sites')">My Sites</button>
                 <button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;" onclick="document.getElementById('user-menu').classList.add('hidden');switchView('settings')">Settings</button>
-                ${userIsAdmin ? `` : ""}
+                ${userIsAdmin ? `<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;color:var(--purple-text);" onclick="document.getElementById('user-menu').classList.add('hidden');switchView('admin');loadAdminData('overview')">Admin</button>` : ""}
                 <button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;color:var(--red);" onclick="doSignOut()">Sign out</button>
               </div>
             </div>
