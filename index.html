@@ -1,589 +1,737 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0A0A0B" />
-  <title>Kayhost HTML — Paste HTML. Get a link.</title>
+  <meta name="theme-color" content="#0E0E10" id="meta-theme" />
+  <title>Kayhost — Paste HTML, get a link</title>
   <meta name="description" content="Dead-simple HTML hosting. Paste HTML, get a live link in seconds. AI-powered visual editor included." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
+    /* ===== Design system ===== */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     :root {
-      --bg: #0A0A0B; --bg2: #131316; --bg3: #1A1A1E;
-      --fg: #F5F5F7; --muted: #8E8E93; --muted2: #55555A;
-      --yellow: #FDE047; --yellow-hover: #FACC15;
-      --purple: #C084FC; --purple-hover: #A855F7;
-      --border: #26262A;
-      --red: #FF6B6B;
-      --radius: 8px; --radius-lg: 14px; --radius-xl: 20px;
-      --font: 'Inter', system-ui, sans-serif;
-      --display: 'Sora', 'Inter', sans-serif;
-      --mono: 'JetBrains Mono', ui-monospace, monospace;
+      /* Dark mode (default) */
+      --bg: #0E0E10;
+      --bg-card: #16161A;
+      --bg-elevated: #1C1C22;
+      --border: #26262C;
+      --border-strong: #38383F;
+      --fg: #ECECEE;
+      --fg-secondary: #9CA3AF;
+      --fg-muted: #6B7280;
+      --yellow: #FDE047;
+      --yellow-text: #FDE047;
+      --purple: #A78BFA;
+      --purple-text: #A78BFA;
+      --red: #F87171;
+      --radius: 8px;
+      --radius-lg: 12px;
+      --font: 'Hanken Grotesk', system-ui, sans-serif;
+      --display: 'Bricolage Grotesque', var(--font);
+      --shadow: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow-lg: 0 8px 24px rgba(0,0,0,0.4);
     }
+
+    [data-theme="light"] {
+      --bg: #FAFAF9;
+      --bg-card: #FFFFFF;
+      --bg-elevated: #F5F5F4;
+      --border: #E7E5E4;
+      --border-strong: #D6D3D1;
+      --fg: #1C1917;
+      --fg-secondary: #57534E;
+      --fg-muted: #A8A29E;
+      --yellow: #CA8A04;
+      --yellow-text: #A16207;
+      --purple: #7C3AED;
+      --purple-text: #6D28D9;
+      --red: #DC2626;
+      --shadow: 0 1px 2px rgba(0,0,0,0.06);
+      --shadow-lg: 0 8px 24px rgba(0,0,0,0.08);
+    }
+
     html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
     body {
-      font-family: var(--font); background: var(--bg); color: var(--fg);
-      min-height: 100vh; overflow-x: hidden;
-      -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
-      font-size: 15px; line-height: 1.6;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--fg);
+      min-height: 100vh;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      font-size: 15px;
+      line-height: 1.6;
+      transition: background 0.3s, color 0.3s;
     }
     a { color: inherit; text-decoration: none; }
     button { font-family: inherit; cursor: pointer; border: 0; background: none; color: inherit; }
     input, textarea, select { font-family: inherit; font-size: 15px; color: var(--fg); }
     ::selection { background: var(--purple); color: var(--bg); }
 
-    h1, h2, h3 { font-family: var(--display); letter-spacing: -0.03em; line-height: 1.15; }
+    :focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; border-radius: 4px; }
 
-    .container { max-width: 860px; margin: 0 auto; padding: 0 16px; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+    }
 
-    /* Topbar */
-    .topbar { padding: 16px 0; display: flex; align-items: center; justify-content: space-between; }
-    .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; font-family: var(--display); }
-    .brand-mark { width: 26px; height: 26px; border-radius: 7px; background: var(--purple); display: grid; place-items: center; color: var(--bg); font-weight: 800; font-size: 14px; font-family: var(--display); }
-    .nav-links { display: flex; gap: 4px; align-items: center; }
-    .nav-links button { padding: 7px 12px; border-radius: 7px; color: var(--muted); font-size: 13px; font-weight: 500; transition: all 0.15s; }
-    .nav-links button:hover { color: var(--fg); background: var(--bg2); }
-    .nav-links button.active { color: var(--yellow); }
+    h1, h2, h3 { font-family: var(--display); letter-spacing: -0.02em; line-height: 1.1; }
 
-    /* Hero */
-    .hero { text-align: center; padding: 40px 0 20px; }
-    .hero h1 { font-size: clamp(30px, 6vw, 48px); font-weight: 800; letter-spacing: -0.03em; }
-    .hero h1 .accent { color: var(--muted); }
-    .hero p { color: var(--muted); font-size: 16px; margin-top: 10px; max-width: 460px; margin-left: auto; margin-right: auto; line-height: 1.6; }
-    .hero .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: rgba(253,224,71,0.1); border: 1px solid rgba(253,224,71,0.2); color: var(--yellow); font-size: 12px; font-family: var(--mono); margin-bottom: 16px; }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 20px; }
+    .container-wide { max-width: 960px; margin: 0 auto; padding: 0 20px; }
 
-    /* Upload area */
-    .upload-zone { border: 2px dashed var(--border); border-radius: var(--radius-lg); padding: 40px 24px; text-align: center; transition: all 0.2s; margin-bottom: 16px; cursor: pointer; }
-    .upload-zone:hover, .upload-zone.dragover { border-color: var(--purple); background: rgba(192,132,252,0.04); }
-    .upload-zone .ico { width: 44px; height: 44px; border-radius: 50%; background: var(--bg2); display: grid; place-items: center; margin: 0 auto 12px; color: var(--purple); }
-    .upload-zone .ico svg { width: 20px; height: 20px; }
-    .upload-zone h3 { font-size: 17px; margin-bottom: 6px; }
-    .upload-zone p { color: var(--muted); font-size: 14px; }
-    .upload-zone .actions { display: flex; gap: 8px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
-    .upload-zone input { display: none; }
+    /* ===== Header ===== */
+    header.site-header {
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 50;
+      background: var(--bg);
+      transition: background 0.3s;
+    }
+    .header-inner { display: flex; align-items: center; justify-content: space-between; height: 56px; }
+    .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 16px; font-family: var(--display); }
+    .brand-mark {
+      width: 24px; height: 24px; border-radius: 6px;
+      background: var(--purple); color: var(--bg);
+      display: grid; place-items: center; font-weight: 800; font-size: 13px;
+      font-family: var(--display);
+    }
+    .nav-links { display: flex; gap: 2px; align-items: center; }
+    .nav-links a, .nav-links button {
+      padding: 7px 12px; border-radius: 6px; color: var(--fg-secondary);
+      font-size: 14px; font-weight: 500; transition: all 0.15s; background: none; border: 0; cursor: pointer;
+    }
+    .nav-links a:hover, .nav-links button:hover { color: var(--fg); background: var(--bg-elevated); }
+    .nav-links .active { color: var(--purple); }
 
-    /* Buttons */
-    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 16px; border-radius: var(--radius); font-weight: 600; font-size: 14px; font-family: var(--display); transition: all 0.15s; border: 1px solid transparent; min-height: 40px; white-space: nowrap; }
+    .theme-toggle {
+      width: 34px; height: 34px; border-radius: 7px; border: 1px solid var(--border);
+      display: grid; place-items: center; cursor: pointer; color: var(--fg-secondary);
+      transition: all 0.15s; background: var(--bg-card);
+    }
+    .theme-toggle:hover { color: var(--fg); border-color: var(--border-strong); }
+
+    /* ===== Hero ===== */
+    .hero { text-align: center; padding: 60px 0 32px; }
+    .hero h1 { font-size: clamp(32px, 7vw, 52px); font-weight: 700; letter-spacing: -0.03em; }
+    .hero h1 .secondary { color: var(--fg-secondary); }
+    .hero p { color: var(--fg-secondary); font-size: 17px; margin-top: 14px; max-width: 480px; margin-left: auto; margin-right: auto; }
+
+    /* ===== Deploy zone ===== */
+    .deploy-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-lg);
+      padding: 36px 24px; text-align: center; transition: all 0.2s;
+      background: var(--bg-card); margin-bottom: 24px; cursor: pointer;
+    }
+    .deploy-zone:hover, .deploy-zone.dragover { border-color: var(--purple); }
+    .deploy-zone .upload-ico { width: 40px; height: 40px; margin: 0 auto 12px; color: var(--purple); }
+    .deploy-zone .upload-ico svg { width: 100%; height: 100%; }
+    .deploy-zone h3 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+    .deploy-zone p { color: var(--fg-secondary); font-size: 14px; }
+    .deploy-zone .zone-actions { display: flex; gap: 8px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
+    .deploy-zone input { display: none; }
+
+    /* ===== Buttons ===== */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 9px 16px; border-radius: var(--radius); font-weight: 600; font-size: 14px;
+      font-family: var(--font); transition: all 0.15s; border: 1px solid transparent;
+      min-height: 38px; white-space: nowrap;
+    }
     .btn:active { transform: scale(0.98); }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-yellow { background: var(--yellow); color: var(--bg); }
-    .btn-yellow:hover { background: var(--yellow-hover); }
     .btn-purple { background: var(--purple); color: var(--bg); }
-    .btn-purple:hover { background: var(--purple-hover); }
-    .btn-ghost { background: transparent; color: var(--fg); border-color: var(--border); }
-    .btn-ghost:hover { border-color: var(--muted); }
+    .btn-purple:hover { filter: brightness(1.1); }
+    .btn-yellow { background: var(--yellow); color: var(--bg); }
+    .btn-yellow:hover { filter: brightness(1.05); }
+    .btn-ghost { background: var(--bg-elevated); color: var(--fg); border-color: var(--border); }
+    .btn-ghost:hover { border-color: var(--border-strong); }
     .btn-block { width: 100%; }
-    .btn-lg { padding: 14px 20px; font-size: 15px; min-height: 48px; }
-    .btn-sm { padding: 7px 12px; font-size: 13px; min-height: 34px; border-radius: 7px; }
-    .btn svg { width: 16px; height: 16px; }
+    .btn-lg { padding: 12px 20px; font-size: 15px; min-height: 44px; }
+    .btn-sm { padding: 6px 12px; font-size: 13px; min-height: 32px; border-radius: 6px; }
 
-    /* Textarea + form */
-    .textarea { width: 100%; padding: 14px; border-radius: var(--radius); background: var(--bg2); border: 1px solid var(--border); color: var(--fg); font-family: var(--mono); font-size: 13px; line-height: 1.5; resize: vertical; min-height: 220px; transition: border 0.15s; }
+    /* ===== Editor ===== */
+    .editor-section { display: none; margin-bottom: 32px; }
+    .editor-section.visible { display: block; }
+    .editor-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; }
+
+    .textarea {
+      width: 100%; padding: 14px; border-radius: var(--radius); background: var(--bg-elevated);
+      border: 1px solid var(--border); color: var(--fg); font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+      font-size: 13px; line-height: 1.5; resize: vertical; min-height: 200px; transition: border 0.15s;
+    }
     .textarea:focus { outline: none; border-color: var(--purple); }
-    .input { width: 100%; padding: 10px 14px; border-radius: var(--radius); background: var(--bg2); border: 1px solid var(--border); color: var(--fg); min-height: 40px; transition: border 0.15s; }
-    .input:focus { outline: none; border-color: var(--yellow); }
-    .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
-    .field label { font-size: 13px; font-weight: 600; font-family: var(--display); }
 
-    /* TTL */
-    .ttl-row { display: flex; gap: 6px; flex-wrap: wrap; }
-    .ttl-opt { padding: 8px 14px; border-radius: 7px; background: var(--bg2); border: 1px solid var(--border); color: var(--muted); font-size: 13px; cursor: pointer; transition: all 0.15s; font-family: var(--display); font-weight: 500; }
-    .ttl-opt.active { background: rgba(253,224,71,0.1); color: var(--yellow); border-color: var(--yellow); }
+    .editor-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+    .editor-field { flex: 1 1 180px; }
+    .editor-field label { font-size: 13px; font-weight: 600; display: block; margin-bottom: 6px; color: var(--fg); }
 
-    /* Result link */
-    .link-box { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-radius: var(--radius); background: rgba(192,132,252,0.08); border: 1px solid rgba(192,132,252,0.2); font-family: var(--mono); font-size: 13px; color: var(--purple); word-break: break-all; margin-top: 12px; }
-    .link-box .copy { margin-left: auto; flex-shrink: 0; padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(192,132,252,0.2); background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; font-family: var(--mono); text-transform: uppercase; }
-    .link-box .copy:hover { color: var(--purple); border-color: var(--purple); }
+    .ttl-row { display: flex; gap: 4px; flex-wrap: wrap; }
+    .ttl-opt {
+      padding: 7px 12px; border-radius: 6px; background: var(--bg-elevated); border: 1px solid var(--border);
+      color: var(--fg-secondary); font-size: 13px; cursor: pointer; transition: all 0.15s; font-weight: 500;
+    }
+    .ttl-opt.active { color: var(--yellow-text); border-color: var(--yellow); background: color-mix(in srgb, var(--yellow) 8%, transparent); }
 
-    /* Card */
-    .card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; }
+    .input {
+      width: 100%; padding: 9px 12px; border-radius: var(--radius); background: var(--bg-elevated);
+      border: 1px solid var(--border); color: var(--fg); min-height: 38px; transition: border 0.15s;
+    }
+    .input:focus { outline: none; border-color: var(--purple); }
 
-    /* Feature grid */
-    .features { padding: 40px 0; }
-    .features h2 { font-size: clamp(22px, 4vw, 32px); font-weight: 700; text-align: center; margin-bottom: 24px; }
-    .features .eyebrow { text-align: center; font-family: var(--mono); font-size: 12px; color: var(--yellow); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
-    .feature-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
-    @media (min-width: 620px) { .feature-grid { grid-template-columns: 1fr 1fr; } }
-    .feature-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; transition: border 0.15s; }
-    .feature-card:hover { border-color: var(--muted2); }
-    .feature-card .ico { width: 32px; height: 32px; border-radius: 8px; background: rgba(192,132,252,0.1); color: var(--purple); display: grid; place-items: center; margin-bottom: 12px; }
-    .feature-card .ico.yellow { background: rgba(253,224,71,0.1); color: var(--yellow); }
-    .feature-card .ico svg { width: 16px; height: 16px; }
-    .feature-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-    .feature-card p { color: var(--muted); font-size: 13px; line-height: 1.5; }
-    .feature-card .tags { margin-top: 8px; font-family: var(--mono); font-size: 11px; color: var(--muted2); }
+    /* ===== Deploy result (the bold moment) ===== */
+    .deploy-result { margin-top: 16px; overflow: hidden; }
+    .deploy-result.empty { display: none; }
+    .link-box {
+      display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-radius: var(--radius);
+      background: var(--bg-elevated); border: 1px solid var(--border);
+      font-family: 'SF Mono', monospace; font-size: 13px; color: var(--purple-text); word-break: break-all;
+    }
+    .link-box .copy-btn {
+      margin-left: auto; flex-shrink: 0; padding: 5px 10px; border-radius: 5px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--fg-secondary);
+      font-size: 12px; cursor: pointer; transition: all 0.15s;
+    }
+    .link-box .copy-btn:hover { color: var(--purple-text); border-color: var(--purple); }
 
-    /* Preview */
+    @keyframes revealLink {
+      from { opacity: 0; transform: translateY(12px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .deploy-result.revealed { animation: revealLink 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+
+    /* ===== Preview ===== */
     .preview-wrap { margin-top: 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
-    .preview-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--bg2); border-bottom: 1px solid var(--border); font-size: 13px; color: var(--muted); }
-    .preview-iframe { width: 100%; min-height: 400px; border: 0; background: white; }
-    .preview-iframe.editing { outline: 2px dashed var(--purple); }
+    .preview-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 14px; background: var(--bg-elevated); border-bottom: 1px solid var(--border);
+      font-size: 13px; color: var(--fg-secondary);
+    }
+    .preview-bar .actions { display: flex; gap: 4px; }
+    .preview-iframe { width: 100%; min-height: 360px; border: 0; background: white; }
+    .preview-iframe.editing { outline: 2px dashed var(--purple); outline-offset: -2px; }
 
-    /* AI panel */
-    .ai-panel { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg2); border-top: 1px solid var(--border); padding: 16px; z-index: 100; transform: translateY(100%); transition: transform 0.3s; }
+    /* ===== AI panel ===== */
+    .ai-panel {
+      position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-card);
+      border-top: 1px solid var(--border); padding: 16px 20px; z-index: 100;
+      transform: translateY(100%); transition: transform 0.3s; box-shadow: var(--shadow-lg);
+    }
     .ai-panel.open { transform: translateY(0); }
     .ai-panel .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-    .ai-panel .title { font-size: 13px; font-family: var(--mono); color: var(--purple); }
-    .ai-panel .close { color: var(--muted); cursor: pointer; padding: 4px 8px; }
-    .ai-panel .selector { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-bottom: 8px; word-break: break-all; }
+    .ai-panel .title { font-size: 14px; font-weight: 600; color: var(--purple-text); }
+    .ai-panel .close { color: var(--fg-muted); cursor: pointer; padding: 4px 8px; font-size: 18px; }
+    .ai-panel .selector { font-size: 12px; color: var(--fg-muted); margin-bottom: 8px; font-family: 'SF Mono', monospace; word-break: break-all; }
     .ai-panel .row { display: flex; gap: 8px; }
-    .ai-panel input { flex: 1; padding: 10px 14px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); color: var(--fg); font-size: 14px; }
+    .ai-panel input {
+      flex: 1; padding: 10px 14px; border-radius: var(--radius); background: var(--bg-elevated);
+      border: 1px solid var(--border); color: var(--fg); font-size: 14px;
+    }
     .ai-panel input:focus { outline: none; border-color: var(--purple); }
 
-    /* Dashboard */
+    /* ===== Features ===== */
+    .features-section { padding: 48px 0; border-top: 1px solid var(--border); }
+    .features-section h2 { font-size: clamp(22px, 4vw, 30px); font-weight: 700; text-align: center; margin-bottom: 28px; }
+    .feature-grid { display: grid; grid-template-columns: 1fr; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+    @media (min-width: 620px) { .feature-grid { grid-template-columns: 1fr 1fr; } }
+    .feature-card { background: var(--bg-card); padding: 20px; transition: background 0.15s; }
+    .feature-card:hover { background: var(--bg-elevated); }
+    .feature-card .ico { width: 28px; height: 28px; margin-bottom: 10px; color: var(--purple); }
+    .feature-card .ico.yellow { color: var(--yellow-text); }
+    .feature-card .ico svg { width: 100%; height: 100%; }
+    .feature-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .feature-card p { color: var(--fg-secondary); font-size: 14px; line-height: 1.5; }
+
+    /* ===== FAQ ===== */
+    .faq-section { padding: 48px 0; border-top: 1px solid var(--border); }
+    .faq-section h2 { font-size: clamp(22px, 4vw, 30px); font-weight: 700; text-align: center; margin-bottom: 28px; }
+    .faq-item { border-bottom: 1px solid var(--border); }
+    .faq-item summary {
+      padding: 16px 0; font-size: 16px; font-weight: 600; cursor: pointer; list-style: none;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .faq-item summary::-webkit-details-marker { display: none; }
+    .faq-item summary::after { content: "+"; font-size: 20px; color: var(--fg-muted); transition: transform 0.2s; }
+    .faq-item[open] summary::after { transform: rotate(45deg); }
+    .faq-item .answer { padding: 0 0 16px; color: var(--fg-secondary); font-size: 15px; line-height: 1.6; }
+
+    /* ===== Footer ===== */
+    footer.site-footer { border-top: 1px solid var(--border); padding: 32px 0; }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: center; }
+    .footer-links a { color: var(--fg-secondary); font-size: 14px; padding: 4px; transition: color 0.15s; }
+    .footer-links a:hover { color: var(--fg); }
+    .footer-copy { text-align: center; color: var(--fg-muted); font-size: 13px; margin-top: 16px; }
+
+    /* ===== Dashboard ===== */
+    .dashboard-view { display: none; }
+    .dashboard-view.visible { display: block; }
+    .dashboard-view .section-title { font-size: 22px; font-weight: 700; margin-bottom: 20px; }
     .site-list { display: flex; flex-direction: column; gap: 8px; }
-    .site-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--radius); background: var(--bg2); border: 1px solid var(--border); transition: border 0.15s; }
-    .site-item:hover { border-color: var(--muted2); }
-    .site-item .thumb { width: 32px; height: 32px; border-radius: 8px; background: rgba(192,132,252,0.1); color: var(--purple); display: grid; place-items: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+    .site-item {
+      display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: var(--radius);
+      background: var(--bg-card); border: 1px solid var(--border); transition: border 0.15s;
+    }
+    .site-item:hover { border-color: var(--border-strong); }
+    .site-item .thumb {
+      width: 32px; height: 32px; border-radius: 7px; background: var(--bg-elevated);
+      display: grid; place-items: center; font-weight: 700; font-size: 13px; color: var(--purple-text); flex-shrink: 0;
+    }
     .site-item .info { flex: 1; min-width: 0; }
     .site-item .info .title { font-size: 14px; font-weight: 500; }
-    .site-item .info .meta { font-size: 12px; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
-    .site-item .actions { display: flex; gap: 4px; flex-shrink: 0; }
-    .site-item .actions button { padding: 6px 10px; border-radius: 6px; color: var(--muted); font-size: 11px; font-family: var(--mono); text-transform: uppercase; }
-    .site-item .actions button:hover { color: var(--yellow); }
+    .site-item .info .meta { font-size: 12px; color: var(--fg-muted); margin-top: 2px; }
+    .site-item .actions { display: flex; gap: 4px; }
+    .site-item .actions button, .site-item .actions a {
+      padding: 5px 10px; border-radius: 5px; color: var(--fg-muted); font-size: 12px;
+      background: none; border: 0; cursor: pointer; transition: color 0.15s;
+    }
+    .site-item .actions button:hover, .site-item .actions a:hover { color: var(--purple-text); }
 
-    /* Toast */
-    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 12px 16px; border-radius: 10px; background: var(--bg2); border: 1px solid var(--border); z-index: 999; font-size: 13px; max-width: 360px; animation: slideUp 0.3s; }
+    /* ===== Toast ===== */
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      padding: 12px 18px; border-radius: var(--radius); background: var(--bg-card);
+      border: 1px solid var(--border-strong); z-index: 999; font-size: 14px;
+      box-shadow: var(--shadow-lg); animation: toastIn 0.25s ease; max-width: 360px;
+    }
     .toast.success { border-left: 3px solid var(--purple); }
     .toast.error { border-left: 3px solid var(--red); }
-    @keyframes slideUp { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+    @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
-    .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.15); border-top-color: var(--purple); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.2); border-top-color: var(--purple); border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .section { padding: 8px 0 60px; }
-    .eyebrow { font-family: var(--mono); font-size: 12px; color: var(--yellow); text-transform: uppercase; letter-spacing: 0.1em; }
-    .empty { text-align: center; padding: 32px 16px; color: var(--muted); }
-    .empty .ico { width: 48px; height: 48px; border-radius: 12px; background: var(--bg2); border: 1px solid var(--border); display: grid; place-items: center; margin: 0 auto 12px; color: var(--muted2); }
-    .hidden { display: none; }
+    .empty-state { text-align: center; padding: 40px 16px; color: var(--fg-muted); }
+    .empty-state h3 { font-size: 17px; font-weight: 600; margin-bottom: 6px; color: var(--fg-secondary); }
+    .hidden { display: none !important; }
+
+    /* Mobile nav */
+    .mobile-menu-btn { display: none; }
+    @media (max-width: 640px) {
+      .nav-links { display: none; }
+      .nav-links.open { display: flex; flex-direction: column; position: absolute; top: 56px; left: 0; right: 0; background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 8px; z-index: 49; }
+      .mobile-menu-btn { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 7px; border: 1px solid var(--border); cursor: pointer; color: var(--fg-secondary); }
+    }
   </style>
 </head>
 <body>
-  <div id="app"></div>
+  <noscript>
+    <div style="max-width: 500px; margin: 80px auto; text-align: center; font-family: system-ui; padding: 20px;">
+      <h1 style="font-size: 24px; margin-bottom: 8px;">JavaScript is required</h1>
+      <p style="color: #888; font-size: 15px;">Kayhost needs JavaScript to deploy sites and use the AI editor. Please enable it in your browser settings.</p>
+    </div>
+  </noscript>
+
+  <!-- ===== Header ===== -->
+  <header class="site-header">
+    <div class="container-wide header-inner">
+      <a href="/" class="brand">
+        <span class="brand-mark">K</span>
+        <span>kayhost</span>
+      </a>
+      <nav class="nav-links" id="nav-links">
+        <button class="active" data-view="new" onclick="switchView('new')">New</button>
+        <button data-view="sites" onclick="switchView('sites')">My Sites</button>
+        <a href="#features">Features</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <button class="theme-toggle" onclick="toggleTheme()" id="theme-toggle" title="Toggle theme" aria-label="Toggle theme">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="theme-icon"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+        <button class="mobile-menu-btn" onclick="document.getElementById('nav-links').classList.toggle('open')" aria-label="Menu">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== Main: New/Deploy view ===== -->
+  <main id="view-new" class="container">
+    <section class="hero">
+      <h1>Paste HTML.<br><span class="secondary">Get a link.</span></h1>
+      <p>A dead-simple host for HTML files. Drop one page or a full site, share the URL, move on. Made for prototypes, demos, and the thousand weird things you build in an afternoon.</p>
+    </section>
+
+    <section class="deploy-zone" id="deploy-zone">
+      <div class="upload-ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </div>
+      <h3>Paste HTML, drop a file, or upload a ZIP</h3>
+      <p>Just press Ctrl+V or click to upload</p>
+      <div class="zone-actions">
+        <button class="btn btn-purple btn-sm" onclick="event.stopPropagation(); showEditor()">Paste HTML</button>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); document.getElementById('file-input').click()">Upload file</button>
+      </div>
+      <input type="file" id="file-input" accept=".html,.htm,.zip,image/*" />
+    </section>
+
+    <section class="editor-section" id="editor-section">
+      <div class="editor-card">
+        <textarea class="textarea" id="html-input" placeholder="Paste your HTML here..." spellcheck="false"></textarea>
+        <div class="editor-row">
+          <div class="editor-field">
+            <label>Expiry</label>
+            <div class="ttl-row" id="ttl-row">
+              <div class="ttl-opt" data-ttl="1d">1 day</div>
+              <div class="ttl-opt active" data-ttl="7d">7 days</div>
+              <div class="ttl-opt" data-ttl="30d">30 days</div>
+              <div class="ttl-opt" data-ttl="never">Never</div>
+            </div>
+          </div>
+          <div class="editor-field">
+            <label>Page title</label>
+            <input class="input" id="title-input" placeholder="My page" value="Untitled" />
+          </div>
+        </div>
+        <button class="btn btn-yellow btn-block btn-lg" id="deploy-btn" style="margin-top: 16px;">Deploy</button>
+        <div class="deploy-result empty" id="deploy-result"></div>
+        <div class="preview-wrap" id="preview-wrap" style="display: none;">
+          <div class="preview-bar">
+            <span>Live preview</span>
+            <div class="actions">
+              <button class="btn btn-ghost btn-sm" onclick="toggleAiEdit()" id="ai-toggle">AI edit</button>
+              <button class="btn btn-ghost btn-sm" onclick="updatePreview()">Refresh</button>
+            </div>
+          </div>
+          <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-same-origin"></iframe>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Features ===== -->
+    <section class="features-section" id="features">
+      <h2>Only the things you'd actually use.</h2>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+          <h3>Instant deploy</h3>
+          <p>Paste HTML or drop a file — live in under 3 seconds.</p>
+        </div>
+        <div class="feature-card">
+          <div class="ico yellow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg></div>
+          <h3>AI visual editing</h3>
+          <p>Click any element, describe a change, watch it happen live.</p>
+        </div>
+        <div class="feature-card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+          <h3>No signup required</h3>
+          <p>Publish without an account. Come back later to manage.</p>
+        </div>
+        <div class="feature-card">
+          <div class="ico yellow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+          <h3>Auto-expiry</h3>
+          <p>Set TTL on sites: 1 day, 7 days, 30 days, or never.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== FAQ ===== -->
+    <section class="faq-section" id="faq">
+      <h2>Frequently asked</h2>
+      <div class="container" style="max-width: 680px;">
+        <details class="faq-item">
+          <summary>How does hosting work?</summary>
+          <div class="answer">Paste your HTML into the editor, pick an expiry, and hit Deploy. We save it to our database and give you a live URL like <code>kayhost.vercel.app/site/abc123</code>. Anyone with the link can view the page.</div>
+        </details>
+        <details class="faq-item">
+          <summary>Which AI models are supported?</summary>
+          <div class="answer">The AI visual editor uses Google Gemini 1.5 Flash. Click any element on your live preview, describe what you want to change in plain English, and the AI rewrites that part of the HTML.</div>
+        </details>
+        <details class="faq-item">
+          <summary>Is it free?</summary>
+          <div class="answer">Yes. Hosting is free. Sites expire after 7 days by default (or choose 1 day, 30 days, or never). No credit card, no signup required.</div>
+        </details>
+        <details class="faq-item">
+          <summary>Do I need to sign up?</summary>
+          <div class="answer">No. You can deploy without an account. Your sites are tracked by a random browser ID stored in localStorage, so you can still see your previously deployed pages.</div>
+        </details>
+        <details class="faq-item">
+          <summary>Can I upload images?</summary>
+          <div class="answer">Yes. Upload images via the file picker and we'll host them on Cloudinary, giving you a permanent URL you can use in your HTML.</div>
+        </details>
+        <details class="faq-item">
+          <summary>Is there an API?</summary>
+          <div class="answer">The deploy, list, and AI-edit endpoints are all REST APIs under <code>/api</code>. You can deploy programmatically by POSTing to <code>/api/deploy</code>.</div>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===== Dashboard view ===== -->
+  <main id="view-sites" class="container dashboard-view" style="padding-top: 32px;">
+    <h2 class="section-title">Your sites</h2>
+    <div class="site-list" id="site-list">
+      <div class="empty-state"><div class="spinner"></div></div>
+    </div>
+  </main>
+
+  <!-- ===== AI Panel ===== -->
+  <div class="ai-panel" id="ai-panel">
+    <div class="head">
+      <span class="title">AI editor</span>
+      <span class="close" onclick="closeAiPanel()">&times;</span>
+    </div>
+    <div class="selector" id="ai-selector">Click any element in the preview above</div>
+    <div class="row">
+      <input type="text" id="ai-instruction" placeholder="Describe the change you want..." />
+      <button class="btn btn-purple" id="ai-apply" onclick="applyAiEdit()">Apply</button>
+    </div>
+  </div>
+
+  <!-- ===== Footer ===== -->
+  <footer class="site-footer">
+    <div class="container-wide">
+      <div class="footer-links">
+        <a href="#features">Features</a>
+        <a href="#faq">FAQ</a>
+        <a href="/api/deploy" target="_blank">API</a>
+        <a href="#" onclick="switchView('sites')">My Sites</a>
+      </div>
+      <div class="footer-copy">© 2026 Kayhost. Built for builders.</div>
+    </div>
+  </footer>
+
   <script>
     /* ============================================================
-     *  KAYHOST HTML — single-file SPA
-     *  Backend = Vercel serverless functions in /api
-     *  AI = Gemini (server-side, key hardcoded in api/ai-edit.js)
+     *  Kayhost — interactivity layer
+     *  Static HTML is already in the body above. This script only
+     *  handles: theme toggle, deploy, file upload, AI edit, dashboard.
      * ============================================================ */
 
-    const $ = (s, r = document) => r.querySelector(s);
-    const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
-    function el(tag, attrs, ...children) {
-      const e = document.createElement(tag);
-      for (const [k, v] of Object.entries(attrs || {})) {
-        if (v === null || v === undefined || v === false) continue;
-        if (k === "class") e.className = v;
-        else if (k === "html") e.innerHTML = v;
-        else if (k === "text") e.textContent = v;
-        else if (k === "style" && typeof v === "object") Object.assign(e.style, v);
-        else if (k.startsWith("on") && typeof v === "function") e.addEventListener(k.slice(2).toLowerCase(), v);
-        else e.setAttribute(k, v);
+    // --- Theme ---
+    function getStoredTheme() { return localStorage.getItem("kayhost-theme"); }
+    function setTheme(theme) {
+      document.documentElement.setAttribute("data-theme", theme);
+      document.getElementById("meta-theme").setAttribute("content", theme === "light" ? "#FAFAF9" : "#0E0E10");
+      localStorage.setItem("kayhost-theme", theme);
+      const icon = document.getElementById("theme-icon");
+      if (theme === "light") {
+        icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+      } else {
+        icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
       }
-      for (const c of children.flat()) {
-        if (c === null || c === undefined || c === false) continue;
-        if (typeof c === "string" || typeof c === "number") e.appendChild(document.createTextNode(String(c)));
-        else if (c instanceof Node) e.appendChild(c);
-      }
-      return e;
     }
-    function escapeHtml(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
-    function toast(msg, type = "info") {
-      const t = el("div", { class: `toast ${type}`, text: msg });
+    function toggleTheme() { setTheme(document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light"); }
+    // Init theme
+    setTheme(getStoredTheme() || (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"));
+
+    // --- View switching ---
+    function switchView(view) {
+      document.getElementById("view-new").classList.toggle("hidden", view !== "new");
+      document.getElementById("view-sites").classList.toggle("visible", view === "sites");
+      document.querySelectorAll("[data-view]").forEach(b => b.classList.toggle("active", b.dataset.view === view));
+      document.getElementById("nav-links").classList.remove("open");
+      if (view === "sites") loadSites();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    // --- Helpers ---
+    function toast(msg, type) {
+      const t = document.createElement("div");
+      t.className = "toast " + (type || "info");
+      t.textContent = msg;
       document.body.appendChild(t);
       setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity 0.3s"; setTimeout(() => t.remove(), 300); }, 3000);
     }
-    function debounce(fn, wait = 300) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), wait); }; }
+    function escapeHtml(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+    function getBrowserId() { let id = localStorage.getItem("kayhost-browser-id"); if (!id) { id = "b_" + Math.random().toString(36).slice(2, 12); localStorage.setItem("kayhost-browser-id", id); } return id; }
 
-    const state = { mode: "editor", ttl: "7d", html: "", editing: false, selectedSelector: null };
+    // --- State ---
+    let currentHtml = "";
+    let currentTtl = "7d";
+    let editing = false;
+    let selectedSelector = null;
 
-    function getBrowserId() {
-      let id = localStorage.getItem("kayhost-browser-id");
-      if (!id) { id = "b_" + Math.random().toString(36).slice(2, 12) + Date.now().toString(36).slice(-4); localStorage.setItem("kayhost-browser-id", id); }
-      return id;
-    }
-
-    async function apiDeploy(html, title, ttl) {
-      const res = await fetch("/api/deploy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ html, title, ttl, browserId: getBrowserId() }) });
-      if (!res.ok) throw new Error((await res.json()).error || "Deploy failed");
-      return res.json();
-    }
-    async function aiEdit(html, selector, instruction) {
-      const res = await fetch("/api/ai-edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ html, selector, instruction }) });
-      if (!res.ok) throw new Error((await res.json()).error || "AI edit failed");
-      return res.json();
-    }
-    async function fetchSites() {
-      const res = await fetch(`/api/sites?browserId=${getBrowserId()}`);
-      if (!res.ok) return { sites: [] };
-      return res.json();
-    }
-    async function uploadMedia(file) {
-      const reader = new FileReader();
-      return new Promise((resolve, reject) => {
-        reader.onload = async () => {
-          try {
-            const res = await fetch("/api/media", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: reader.result, filename: file.name, mimeType: file.type }) });
-            if (!res.ok) throw new Error("Upload failed");
-            const { url } = await res.json();
-            resolve(url);
-          } catch (e) { reject(e); }
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-    }
-
-    const DEFAULT_HTML = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>My Page</title>
-  <style>
-    body { font-family: system-ui, sans-serif; display: grid; place-items: center; min-height: 100vh; margin: 0; background: #f4f4f4; }
-    .card { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
-    h1 { color: #C084FC; margin-bottom: 8px; }
-    p { color: #666; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>Hello World</h1>
-    <p>Edit me with AI — click any element above.</p>
-  </div>
-</body>
-</html>`;
-
-    function render() {
-      const app = $("#app");
-      app.innerHTML = "";
-
-      // Topbar
-      const topbar = el("div", { class: "topbar container" });
-      const brand = el("div", { class: "brand" });
-      brand.innerHTML = `<span class="brand-mark">K</span><span>kayhost</span>`;
-      const nav = el("div", { class: "nav-links" });
-      const editorBtn = el("button", { onclick: () => { state.mode = "editor"; render(); } }, "New");
-      const dashBtn = el("button", { onclick: () => { state.mode = "dashboard"; render(); renderDashboard(); } }, "My Pages");
-      if (state.mode === "editor") editorBtn.classList.add("active");
-      else dashBtn.classList.add("active");
-      nav.append(editorBtn, dashBtn);
-      topbar.append(brand, nav);
-      app.appendChild(topbar);
-
-      if (state.mode === "editor") renderEditor(app);
-      else renderDashboardContainer(app);
-    }
-
-    function renderEditor(app) {
-      const section = el("div", { class: "section container" });
-
-      // Hero
-      const hero = el("div", { class: "hero" });
-      hero.innerHTML = `
-        <div class="badge">✨ AI visual editor included</div>
-        <h1>Paste HTML. <span class="accent">Get a link.</span></h1>
-        <p>Dead-simple HTML hosting. Paste, upload, or drag a file — live in under 3 seconds. No signup required.</p>
-      `;
-      section.appendChild(hero);
-
-      // Upload zone (main interaction)
-      const uploadZone = el("div", { class: "upload-zone" });
-      uploadZone.innerHTML = `
-        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
-        <h3>Drop HTML here, or click to upload</h3>
-        <p>.html or .zip — or press ⌘V to paste</p>
-        <div class="actions">
-          <button class="btn btn-purple btn-sm" id="open-editor">📝 Paste HTML</button>
-          <button class="btn btn-ghost btn-sm" id="open-upload">Upload file</button>
-        </div>
-        <input type="file" id="file-input" accept=".html,.htm,.zip,image/*" />
-      `;
-      section.appendChild(uploadZone);
-
-      // File input + drag/drop
-      const fileInput = $("#file-input", uploadZone);
-      uploadZone.onclick = (e) => { if (e.target.tagName !== "BUTTON") fileInput.click(); };
-      uploadZone.addEventListener("dragover", (e) => { e.preventDefault(); uploadZone.classList.add("dragover"); });
-      uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("dragover"));
-      uploadZone.addEventListener("drop", (e) => { e.preventDefault(); uploadZone.classList.remove("dragover"); handleFile(e.dataTransfer.files[0]); });
-      fileInput.onchange = (e) => handleFile(e.target.files[0]);
-      $("#open-editor", uploadZone).onclick = (e) => { e.stopPropagation(); showEditor(); };
-      $("#open-upload", uploadZone).onclick = (e) => { e.stopPropagation(); fileInput.click(); };
-
-      // Editor (hidden initially, shown when "Paste HTML" is clicked)
-      const editorCard = el("div", { class: "card hidden", id: "editor-card", style: { marginTop: "16px" } });
-      section.appendChild(editorCard);
-
-      // Feature grid
-      const features = el("div", { class: "features" });
-      features.innerHTML = `
-        <div class="eyebrow">// what's in the box</div>
-        <h2>Only the things you'd actually use.</h2>
-        <div class="feature-grid">
-          <div class="feature-card">
-            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
-            <h3>Instant deploy</h3>
-            <p>Paste HTML or drop a file — live in under 3 seconds.</p>
-            <div class="tags">~120ms deploy · instant CDN</div>
-          </div>
-          <div class="feature-card">
-            <div class="ico yellow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg></div>
-            <h3>AI visual editing</h3>
-            <p>Click any element, describe a change, watch it happen live.</p>
-            <div class="tags">element select · Gemini powered</div>
-          </div>
-          <div class="feature-card">
-            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
-            <h3>No signup required</h3>
-            <p>Publish without an account. Sign in later to manage.</p>
-            <div class="tags">anonymous · 7-day TTL</div>
-          </div>
-          <div class="feature-card">
-            <div class="ico yellow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
-            <h3>Auto-expiry</h3>
-            <p>Set TTL on sites: 1 day, 7 days, 30 days, or never.</p>
-            <div class="tags">1d · 7d · 30d · never</div>
-          </div>
-        </div>
-      `;
-      section.appendChild(features);
-
-      app.appendChild(section);
-    }
-
-    function showEditor() {
-      const card = $("#editor-card");
-      if (!card) return;
-      card.classList.remove("hidden");
-      card.innerHTML = "";
-
-      // Textarea
-      const textarea = el("textarea", { class: "textarea", placeholder: "Paste your HTML here…", spellcheck: "false" });
-      textarea.value = state.html || DEFAULT_HTML;
-      textarea.addEventListener("input", debounce(() => { state.html = textarea.value; updatePreview(); }, 500));
-      card.appendChild(textarea);
-
-      // TTL + title row
-      const row = el("div", { style: { display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "12px" } });
-      const ttlField = el("div", { class: "field", style: { flex: "1 1 200px", margin: 0 } });
-      ttlField.innerHTML = `<label>Expiry</label>`;
-      const ttlRow = el("div", { class: "ttl-row" });
-      [["1d", "1 day"], ["7d", "7 days"], ["30d", "30 days"], ["never", "Never"]].forEach(([val, label]) => {
-        const opt = el("div", { class: "ttl-opt" + (state.ttl === val ? " active" : ""), text: label });
-        opt.onclick = () => { state.ttl = val; ttlRow.querySelectorAll(".ttl-opt").forEach(o => o.classList.remove("active")); opt.classList.add("active"); };
-        ttlRow.appendChild(opt);
-      });
-      ttlField.appendChild(ttlRow);
-      const titleField = el("div", { class: "field", style: { flex: "1 1 200px", margin: 0 } });
-      titleField.innerHTML = `<label>Page title</label>`;
-      const titleInput = el("input", { class: "input", placeholder: "My page", value: "Untitled" });
-      titleField.appendChild(titleInput);
-      row.append(ttlField, titleField);
-      card.appendChild(row);
-
-      // Deploy button
-      const deployBtn = el("button", { class: "btn btn-yellow btn-block btn-lg", style: { marginTop: "14px" } }, "🚀 Deploy & get link");
-      card.appendChild(deployBtn);
-
-      // Result
-      const result = el("div", { id: "result" });
-      card.appendChild(result);
-
-      deployBtn.onclick = async () => {
-        const html = textarea.value.trim();
-        if (!html) { toast("Paste some HTML first", "error"); return; }
-        deployBtn.disabled = true;
-        deployBtn.innerHTML = `<span class="spinner"></span> Deploying…`;
-        try {
-          state.html = html;
-          const { url } = await apiDeploy(html, titleInput.value || "Untitled", state.ttl);
-          result.innerHTML = `
-            <div class="link-box"><span>${escapeHtml(url)}</span><button class="copy" id="copy-link">copy</button></div>
-            <a class="btn btn-purple btn-block" href="${escapeHtml(url)}" target="_blank" rel="noopener" style="margin-top:8px;">Open live page →</a>
-          `;
-          $("#copy-link", result).onclick = () => navigator.clipboard.writeText(url).then(() => toast("Link copied!", "success"));
-          toast("Deployed! Link is live.", "success");
-        } catch (err) { toast(err.message, "error"); }
-        finally { deployBtn.disabled = false; deployBtn.textContent = "🚀 Deploy & get link"; }
-      };
-
-      // Preview
-      const previewWrap = el("div", { class: "preview-wrap", style: { marginTop: "16px" } });
-      previewWrap.innerHTML = `
-        <div class="preview-bar">
-          <span>preview</span>
-          <div style="display:flex;gap:6px;">
-            <button class="btn btn-ghost btn-sm" id="toggle-ai">✨ AI edit</button>
-            <button class="btn btn-ghost btn-sm" id="refresh-preview">↻</button>
-          </div>
-        </div>
-        <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-same-origin"></iframe>
-      `;
-      card.appendChild(previewWrap);
-
-      $("#refresh-preview", previewWrap).onclick = () => updatePreview();
-      $("#toggle-ai", previewWrap).onclick = () => toggleEditMode();
-
-      state.html = textarea.value;
-      updatePreview();
-    }
-
-    function updatePreview() {
-      const iframe = $("#preview-iframe");
-      if (!iframe) return;
-      iframe.srcdoc = state.html || "";
-      iframe.onload = () => { if (state.editing) wireElementClicks(iframe); };
-    }
-
-    function toggleEditMode() {
-      state.editing = !state.editing;
-      const iframe = $("#preview-iframe");
-      if (!iframe) return;
-      if (state.editing) {
-        iframe.classList.add("editing");
-        toast("Click any element to edit with AI", "success");
-        wireElementClicks(iframe);
-        showAiPanel();
-      } else {
-        iframe.classList.remove("editing");
-        hideAiPanel();
-      }
-    }
-
-    function wireElementClicks(iframe) {
-      try {
-        const doc = iframe.contentDocument;
-        if (!doc) return;
-        const script = doc.createElement("script");
-        script.textContent = `
-          document.addEventListener("click", function(e) {
-            if (!window.__kayhostEditing) return;
-            e.preventDefault(); e.stopPropagation();
-            const prev = document.querySelector("[data-kayhost-selected]");
-            if (prev) { prev.style.outline = ""; delete prev.dataset.kayhostSelected; }
-            e.target.style.outline = "2px solid #C084FC";
-            e.target.dataset.kayhostSelected = "1";
-            window.parent.postMessage({ type: "kayhost-select", selector: getSelector(e.target) }, "*");
-          }, true);
-          function getSelector(el) {
-            if (el.id) return "#" + el.id;
-            let path = [], current = el;
-            while (current && current !== document.body) {
-              let s = current.tagName.toLowerCase();
-              if (current.className && typeof current.className === "string") { const c = current.className.trim().split(/\\s+/).slice(0,2).join("."); if (c) s += "." + c; }
-              const p = current.parentElement;
-              if (p) { const sib = Array.from(p.children).filter(c => c.tagName === current.tagName); if (sib.length > 1) s += ":nth-of-type(" + (sib.indexOf(current)+1) + ")"; }
-              path.unshift(s); current = current.parentElement;
-            }
-            return path.join(" > ");
-          }
-        `;
-        doc.body.appendChild(script);
-      } catch (e) {}
-    }
-
-    window.addEventListener("message", (e) => {
-      if (e.data.type === "kayhost-select") {
-        state.selectedSelector = e.data.selector;
-        const sel = $("#ai-selector");
-        if (sel) sel.textContent = "Selected: " + e.data.selector;
-      }
+    // --- TTL selector ---
+    document.getElementById("ttl-row").addEventListener("click", (e) => {
+      const opt = e.target.closest(".ttl-opt");
+      if (!opt) return;
+      document.querySelectorAll(".ttl-opt").forEach(o => o.classList.remove("active"));
+      opt.classList.add("active");
+      currentTtl = opt.dataset.ttl;
     });
 
-    function showAiPanel() {
-      let panel = $("#ai-panel");
-      if (!panel) {
-        panel = el("div", { class: "ai-panel", id: "ai-panel" });
-        panel.innerHTML = `
-          <div class="head"><span class="title">✨ AI editor</span><span class="close" id="ai-close">✕</span></div>
-          <div class="selector" id="ai-selector">Click any element in the preview…</div>
-          <div class="row"><input type="text" id="ai-instruction" placeholder="Describe the change…" /><button class="btn btn-purple" id="ai-apply">Apply</button></div>
-        `;
-        document.body.appendChild(panel);
-        $("#ai-close", panel).onclick = () => { state.editing = false; $("#preview-iframe")?.classList.remove("editing"); hideAiPanel(); };
-        $("#ai-apply", panel).onclick = async () => {
-          const instruction = $("#ai-instruction", panel).value.trim();
-          if (!instruction) { toast("Describe what you want", "error"); return; }
-          const btn = $("#ai-apply", panel);
-          btn.disabled = true; btn.innerHTML = `<span class="spinner"></span>`;
-          try {
-            const { html } = await aiEdit(state.html, state.selectedSelector, instruction);
-            state.html = html;
-            updatePreview();
-            const ta = $(".textarea"); if (ta) ta.value = html;
-            toast("AI applied the change!", "success");
-            $("#ai-instruction", panel).value = "";
-          } catch (err) { toast(err.message, "error"); }
-          finally { btn.disabled = false; btn.textContent = "Apply"; }
-        };
-        $("#ai-instruction", panel).addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("#ai-apply", panel).click(); } });
-      }
-      panel.classList.add("open");
-    }
-    function hideAiPanel() { const p = $("#ai-panel"); if (p) p.classList.remove("open"); }
+    // --- Deploy zone drag/drop ---
+    const dz = document.getElementById("deploy-zone");
+    const fileInput = document.getElementById("file-input");
+    dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("dragover"); });
+    dz.addEventListener("dragleave", () => dz.classList.remove("dragover"));
+    dz.addEventListener("drop", (e) => { e.preventDefault(); dz.classList.remove("dragover"); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+    dz.addEventListener("click", (e) => { if (!e.target.closest("button")) fileInput.click(); });
+    fileInput.addEventListener("change", (e) => { if (e.target.files[0]) handleFile(e.target.files[0]); });
 
+    // --- Show editor ---
+    function showEditor() {
+      const section = document.getElementById("editor-section");
+      section.classList.add("visible");
+      const textarea = document.getElementById("html-input");
+      if (!textarea.value) {
+        textarea.value = '<!DOCTYPE html>\n<html>\n<head><meta charset="utf-8"><title>My Page</title></head>\n<body>\n<h1>Hello World</h1>\n<p>Edit me with AI.</p>\n</body>\n</html>';
+      }
+      currentHtml = textarea.value;
+      textarea.addEventListener("input", () => { currentHtml = textarea.value; updatePreview(); });
+      showPreview();
+      section.scrollIntoView({ behavior: "smooth" });
+    }
+
+    function showPreview() {
+      document.getElementById("preview-wrap").style.display = "block";
+      updatePreview();
+    }
+    function updatePreview() {
+      const iframe = document.getElementById("preview-iframe");
+      iframe.srcdoc = currentHtml;
+      iframe.onload = () => { if (editing) wireElementClicks(iframe); };
+    }
+
+    // --- Deploy ---
+    document.getElementById("deploy-btn").addEventListener("click", async () => {
+      const html = document.getElementById("html-input").value.trim();
+      const title = document.getElementById("title-input").value || "Untitled";
+      if (!html) { toast("Paste some HTML first", "error"); return; }
+      const btn = document.getElementById("deploy-btn");
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Deploying...';
+      try {
+        const res = await fetch("/api/deploy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ html, title, ttl: currentTtl, browserId: getBrowserId() }) });
+        if (!res.ok) throw new Error((await res.json()).error || "Deploy failed");
+        const { url } = await res.json();
+        const result = document.getElementById("deploy-result");
+        result.classList.remove("empty");
+        result.innerHTML = '<div class="link-box"><span>' + escapeHtml(url) + '</span><button class="copy-btn" onclick="navigator.clipboard.writeText(\'' + escapeHtml(url) + '\').then(() => toast(\'Copied\', \'success\'))">Copy</button></div><a class="btn btn-purple btn-block" href="' + escapeHtml(url) + '" target="_blank" rel="noopener" style="margin-top: 8px;">Open live page</a>';
+        // The bold moment: animate the reveal
+        result.classList.remove("revealed");
+        void result.offsetWidth; // force reflow
+        result.classList.add("revealed");
+        toast("Deployed. Your link is live.", "success");
+      } catch (err) { toast(err.message, "error"); }
+      finally { btn.disabled = false; btn.textContent = "Deploy"; }
+    });
+
+    // --- File handling ---
     async function handleFile(file) {
       if (!file) return;
-      toast("Loading file…", "info");
+      toast("Loading file...", "info");
       try {
         if (file.name.endsWith(".html") || file.name.endsWith(".htm")) {
           const text = await file.text();
-          state.html = text;
+          document.getElementById("html-input").value = text;
+          currentHtml = text;
           showEditor();
-          const ta = $(".textarea"); if (ta) ta.value = text;
-          updatePreview();
-          toast("File loaded!", "success");
+          toast("File loaded", "success");
         } else if (file.type.startsWith("image/")) {
-          toast("Uploading image…", "info");
-          const url = await uploadMedia(file);
-          showEditor();
-          const ta = $(".textarea"); if (ta) { ta.value += `\n<img src="${url}" alt="" />\n`; state.html = ta.value; updatePreview(); }
-          toast("Image uploaded!", "success");
+          toast("Uploading image...", "info");
+          const reader = new FileReader();
+          reader.onload = async () => {
+            try {
+              const res = await fetch("/api/media", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: reader.result, filename: file.name, mimeType: file.type }) });
+              if (!res.ok) throw new Error((await res.json()).error || "Upload failed");
+              const { url } = await res.json();
+              const ta = document.getElementById("html-input");
+              if (ta.value) ta.value += '\n<img src="' + url + '" alt="" />\n';
+              else ta.value = '<img src="' + url + '" alt="" />\n';
+              currentHtml = ta.value;
+              showEditor();
+              updatePreview();
+              toast("Image uploaded", "success");
+            } catch (e) { toast(e.message, "error"); }
+          };
+          reader.readAsDataURL(file);
         } else if (file.name.endsWith(".zip")) {
           toast("ZIP upload coming soon", "error");
         }
       } catch (err) { toast(err.message, "error"); }
     }
 
-    function renderDashboardContainer(app) {
-      const section = el("div", { class: "section container" });
-      section.innerHTML = `<div class="eyebrow">// dashboard</div><h2 style="font-size:22px;margin:6px 0 16px;">Your pages</h2><div class="site-list" id="site-list"><div class="empty"><div class="spinner"></div></div></div>`;
-      app.appendChild(section);
+    // --- AI editor ---
+    function toggleAiEdit() {
+      editing = !editing;
+      const iframe = document.getElementById("preview-iframe");
+      const btn = document.getElementById("ai-toggle");
+      if (editing) {
+        iframe.classList.add("editing");
+        btn.textContent = "Stop AI";
+        toast("Click any element to edit with AI", "success");
+        wireElementClicks(iframe);
+        document.getElementById("ai-panel").classList.add("open");
+      } else {
+        iframe.classList.remove("editing");
+        btn.textContent = "AI edit";
+        closeAiPanel();
+      }
     }
-
-    async function renderDashboard() {
-      const list = $("#site-list");
-      if (!list) return;
+    function closeAiPanel() {
+      document.getElementById("ai-panel").classList.remove("open");
+      editing = false;
+      document.getElementById("preview-iframe").classList.remove("editing");
+      document.getElementById("ai-toggle").textContent = "AI edit";
+    }
+    function wireElementClicks(iframe) {
       try {
-        const { sites } = await fetchSites();
-        if (!sites.length) { list.innerHTML = `<div class="empty"><div class="ico">📄</div><h3>No pages yet</h3><p>Paste HTML and hit Deploy.</p></div>`; return; }
+        const doc = iframe.contentDocument; if (!doc) return;
+        const s = doc.createElement("script");
+        s.textContent = 'document.addEventListener("click",function(e){if(!window.__ke)return;e.preventDefault();e.stopPropagation();var p=document.querySelector("[data-ks]");if(p){p.style.outline="";delete p.dataset.ks;}e.target.style.outline="2px solid #A78BFA";e.target.dataset.ks="1";var sel="";var c=e.target;while(c&&c!==document.body){var s=c.tagName.toLowerCase();if(c.id){s="#"+c.id;}else{if(c.className&&typeof c.className==="string"){var cls=c.className.trim().split(/\\s+/).slice(0,2).join(".");if(cls)s+="."+cls;}var p2=c.parentElement;if(p2){var sib=Array.from(p2.children).filter(function(x){return x.tagName===c.tagName});if(sib.length>1)s+=":nth-of-type("+(sib.indexOf(c)+1)+")";}}sel=s+(sel?" > ":"")+sel;c=c.parentElement;}window.parent.postMessage({type:"ks",selector:sel},"*");},true);';
+        doc.body.appendChild(s);
+      } catch (e) {}
+    }
+    window.addEventListener("message", (e) => {
+      if (e.data.type === "ks") { selectedSelector = e.data.selector; document.getElementById("ai-selector").textContent = "Selected: " + e.data.selector; }
+    });
+    async function applyAiEdit() {
+      const inst = document.getElementById("ai-instruction").value.trim();
+      if (!inst) { toast("Describe what you want to change", "error"); return; }
+      const btn = document.getElementById("ai-apply");
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+      try {
+        const res = await fetch("/api/ai-edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ html: currentHtml, selector: selectedSelector, instruction: inst }) });
+        if (!res.ok) throw new Error((await res.json()).error || "AI edit failed");
+        const { html } = await res.json();
+        currentHtml = html;
+        document.getElementById("html-input").value = html;
+        updatePreview();
+        toast("AI applied the change", "success");
+        document.getElementById("ai-instruction").value = "";
+      } catch (err) { toast(err.message, "error"); }
+      finally { btn.disabled = false; btn.textContent = "Apply"; }
+    }
+    document.getElementById("ai-instruction").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); applyAiEdit(); } });
+
+    // --- Dashboard ---
+    async function loadSites() {
+      const list = document.getElementById("site-list");
+      list.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
+      try {
+        const res = await fetch("/api/sites?browserId=" + getBrowserId());
+        if (!res.ok) throw new Error("Failed to load");
+        const { sites } = await res.json();
+        if (!sites.length) { list.innerHTML = '<div class="empty-state"><h3>No sites yet</h3><p>Paste HTML and hit Deploy to see your pages here.</p></div>'; return; }
         list.innerHTML = "";
-        sites.forEach((s) => {
-          const item = el("div", { class: "site-item" });
+        sites.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        sites.forEach(s => {
+          const item = document.createElement("div");
+          item.className = "site-item";
           const initials = (s.title || "U").slice(0, 2).toUpperCase();
           const expiry = s.expiresAt ? formatExpiry(s.expiresAt) : "Never expires";
-          const url = `${location.origin}/site/${s.id}`;
-          item.innerHTML = `<div class="thumb">${escapeHtml(initials)}</div><div class="info"><div class="title">${escapeHtml(s.title)}</div><div class="meta">${escapeHtml(expiry)} · ${new Date(s.createdAt).toLocaleDateString()}</div></div><div class="actions"><a href="${escapeHtml(url)}" target="_blank">open</a><button class="copy-btn" data-url="${escapeHtml(url)}">copy</button></div>`;
+          const url = location.origin + "/site/" + s.id;
+          item.innerHTML = '<div class="thumb">' + escapeHtml(initials) + '</div><div class="info"><div class="title">' + escapeHtml(s.title || "Untitled") + '</div><div class="meta">' + escapeHtml(expiry) + " · " + new Date(s.createdAt).toLocaleDateString() + '</div></div><div class="actions"><a href="' + escapeHtml(url) + '" target="_blank">open</a><button onclick="navigator.clipboard.writeText(\'' + escapeHtml(url) + '\').then(() => toast(\'Copied\', \'success\'))">copy</button></div>';
           list.appendChild(item);
         });
-        $$(".copy-btn", list).forEach(b => b.onclick = () => navigator.clipboard.writeText(b.dataset.url).then(() => toast("Copied!", "success")));
-      } catch (err) { list.innerHTML = `<div class="empty"><div class="ico">⚠</div><p>${escapeHtml(err.message)}</p></div>`; }
+      } catch (err) { list.innerHTML = '<div class="empty-state"><h3>Couldn\'t load</h3><p>' + escapeHtml(err.message) + "</p></div>"; }
     }
+    function formatExpiry(t) { const r = t - Date.now(); if (r <= 0) return "Expired"; const d = Math.floor(r / 86400000), h = Math.floor((r % 86400000) / 3600000); if (d > 0) return d + "d " + h + "h left"; if (h > 0) return h + "h left"; return "Expires soon"; }
 
-    function formatExpiry(expiresAt) {
-      const r = expiresAt - Date.now();
-      if (r <= 0) return "Expired";
-      const d = Math.floor(r / 86400000), h = Math.floor((r % 86400000) / 3600000);
-      if (d > 0) return `${d}d ${h}h left`;
-      if (h > 0) return `${h}h left`;
-      return "Expires soon";
-    }
-
-    render();
+    // --- Keyboard: Ctrl+V paste ---
+    document.addEventListener("paste", (e) => {
+      if (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA") return;
+      const text = (e.clipboardData || window.clipboardData).getData("text");
+      if (text && text.trim().startsWith("<")) {
+        document.getElementById("html-input").value = text;
+        currentHtml = text;
+        showEditor();
+      }
+    });
   </script>
 </body>
 </html>
