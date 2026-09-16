@@ -1149,8 +1149,24 @@
     let userIsAdmin = false;
 
     // --- Auth state listener ---
+    // Also check localStorage for REST API session (bypasses reCAPTCHA)
+    const storedUser = localStorage.getItem("kayhost-user");
+    if (storedUser) {
+      try {
+        const userData = JSON.parse(storedUser);
+        currentUser = {
+          uid: userData.uid,
+          email: userData.email,
+          displayName: userData.displayName || "",
+          photoURL: userData.photoURL || "",
+          providerData: [{ providerId: "password" }],
+        };
+        userIsAdmin = ADMIN_EMAILS.includes((userData.email || "").toLowerCase());
+      } catch (e) {}
+    }
+
     onAuthStateChanged(auth, async (user) => {
-      currentUser = user;
+      currentUser = user || currentUser; // Keep the localStorage user if SDK has no user
       const authArea = document.getElementById("auth-area");
 
       if (user) {
@@ -1205,16 +1221,49 @@
           else { window.location.href = "/"; }
         }
       } else {
-        // Not signed in
-        userIsAdmin = false;
-        if (authArea) {
-          authArea.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="document.getElementById('signin-modal').classList.remove('hidden')">Sign in</button>`;
-        }
-        if (window._goToAdmin) {
-          window.location.href = "/";
+        // Not signed in via Firebase SDK
+        if (currentUser) {
+          // But we have a localStorage session (from REST API sign-in) — keep showing the user
+          // The onAuthStateChanged fired with null (SDK can't verify), but we still have our session
+          // Don't clear it — just leave the UI as is
+        } else {
+          // Truly not signed in
+          userIsAdmin = false;
+          if (authArea) {
+            authArea.innerHTML = '<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'signin-modal\').classList.remove(\'hidden\')">Sign in</button>';
+          }
+          if (window._goToAdmin) {
+            window.location.href = "/";
+          }
         }
       }
     });
+
+    // If we have a localStorage session, render the user UI immediately
+    // (don't wait for Firebase SDK which might fail on custom domains)
+    if (currentUser) {
+      const authArea = document.getElementById("auth-area");
+      if (authArea) {
+        const user = currentUser;
+        const initial = (user.displayName || user.email || "U").charAt(0).toUpperCase();
+        var avatarHtml = user.photoURL
+          ? '<img src="' + escapeHtml(user.photoURL) + '" alt="" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0;" />'
+          : '<span style="width:24px;height:24px;border-radius:50%;background:var(--purple);color:var(--bg);display:grid;place-items:center;font-size:12px;font-weight:700;flex-shrink:0;">' + escapeHtml(initial) + '</span>';
+        var name = user.displayName || user.email || "User";
+        var adminBtn = userIsAdmin ? '<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;color:var(--purple-text);" onclick="document.getElementById(\'user-menu\').classList.add(\'hidden\');switchView(\'admin\');loadAdminData(\'overview\')">Admin</button>' : '';
+        authArea.innerHTML = '<div style="position:relative;">' +
+          '<button class="theme-toggle" onclick="document.getElementById(\'user-menu\').classList.toggle(\'hidden\')" style="display:flex;align-items:center;gap:6px;padding:4px 8px;">' +
+          avatarHtml +
+          '<span style="font-size:13px;color:var(--fg);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(name) + '</span>' +
+          '</button>' +
+          '<div id="user-menu" class="hidden" style="position:absolute;right:0;top:40px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:4px;z-index:50;min-width:140px;box-shadow:var(--shadow-lg);">' +
+          '<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;" onclick="document.getElementById(\'user-menu\').classList.add(\'hidden\');switchView(\'sites\')">My Sites</button>' +
+          '<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;" onclick="document.getElementById(\'user-menu\').classList.add(\'hidden\');switchView(\'settings\')">Settings</button>' +
+          adminBtn +
+          '<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;color:var(--red);" onclick="doSignOut()">Sign out</button>' +
+          '</div></div>';
+      }
+    }
 
     // --- Sign-in functions (exposed on window) ---
     // Helper: translate Firebase error codes to human messages
@@ -1310,20 +1359,69 @@
       const btn = document.getElementById("email-btn");
       if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Signing in...'; }
       try {
-        await signInWithEmailAndPassword(auth, email, password);
+        // Call our server-side signin endpoint (bypasses reCAPTCHA + domain restrictions)
+        const res = await fetch("/api/signin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || "Sign-in failed");
+        }
+        const userData = await res.json();
+        // Store the session locally so it persists
+        localStorage.setItem("kayhost-user", JSON.stringify(userData));
+        // Update the UI immediately
+        currentUser = {
+          uid: userData.uid,
+          email: userData.email,
+          displayName: userData.displayName || "",
+          photoURL: userData.photoURL || "",
+          providerData: [{ providerId: "password" }],
+        };
+        userIsAdmin = ADMIN_EMAILS.includes((userData.email || "").toLowerCase());
+        // Update nav
+        const authArea = document.getElementById("auth-area");
+        if (authArea) {
+          const initial = (userData.displayName || userData.email || "U").charAt(0).toUpperCase();
+          var avatarHtml = userData.photoURL
+            ? '<img src="' + escapeHtml(userData.photoURL) + '" alt="" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0;" />'
+            : '<span style="width:24px;height:24px;border-radius:50%;background:var(--purple);color:var(--bg);display:grid;place-items:center;font-size:12px;font-weight:700;flex-shrink:0;">' + escapeHtml(initial) + '</span>';
+          var name = userData.displayName || userData.email || "User";
+          var adminBtn = userIsAdmin ? '<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;color:var(--purple-text);" onclick="document.getElementById(\'user-menu\').classList.add(\'hidden\');switchView(\'admin\');loadAdminData(\'overview\')">Admin</button>' : '';
+          authArea.innerHTML = '<div style="position:relative;">' +
+            '<button class="theme-toggle" onclick="document.getElementById(\'user-menu\').classList.toggle(\'hidden\')" style="display:flex;align-items:center;gap:6px;padding:4px 8px;">' +
+            avatarHtml +
+            '<span style="font-size:13px;color:var(--fg);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(name) + '</span>' +
+            '</button>' +
+            '<div id="user-menu" class="hidden" style="position:absolute;right:0;top:40px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:4px;z-index:50;min-width:140px;box-shadow:var(--shadow-lg);">' +
+            '<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;" onclick="document.getElementById(\'user-menu\').classList.add(\'hidden\');switchView(\'sites\')">My Sites</button>' +
+            '<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;" onclick="document.getElementById(\'user-menu\').classList.add(\'hidden\');switchView(\'settings\')">Settings</button>' +
+            adminBtn +
+            '<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;color:var(--red);" onclick="doSignOut()">Sign out</button>' +
+            '</div></div>';
+        }
         document.getElementById("signin-modal").classList.add("hidden");
         toast("Signed in successfully", "success");
       } catch (err) {
-        showAuthErrorInModal(authErrorMessage(err));
+        showAuthErrorInModal(err.message || "Sign-in failed");
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = "Sign in with email"; }
       }
     };
 
     window.doSignOut = async function() {
-      await signOut(auth);
+      localStorage.removeItem("kayhost-user");
+      try { await signOut(auth); } catch (e) {}
       document.getElementById("user-menu")?.classList.add("hidden");
+      // Reset nav to "Sign in" button
+      const authArea = document.getElementById("auth-area");
+      if (authArea) authArea.innerHTML = '<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'signin-modal\').classList.remove(\'hidden\')">Sign in</button>';
+      currentUser = null;
+      userIsAdmin = false;
       toast("Signed out", "info");
+      switchView("new");
     };
 
     // --- Triple-click admin access check ---
