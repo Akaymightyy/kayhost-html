@@ -1568,8 +1568,6 @@
     }
     window.loadAdminData = loadAdminData;
 
-    function escapeHtml(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
-
     function renderOverview(content, data) {
       const s = data.sites || {};
       const u = data.users || {};
