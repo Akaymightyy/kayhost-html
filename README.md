@@ -33,8 +33,8 @@ service cloud.firestore {
 3. Settings → Upload → enable **unsigned uploads** → create an upload preset
 4. Open `api/media.js` → replace the two placeholders:
    ```js
-   const CLOUDINARY_CLOUD_NAME = "your-cloud-name";
-   const CLOUDINARY_UPLOAD_PRESET = "your-upload-preset";
+   const CLOUDINARY_CLOUD_NAME = "dbmtqgs3v";
+   const CLOUDINARY_UPLOAD_PRESET = "kayhost";
    ```
 
 ### 3. Deploy
