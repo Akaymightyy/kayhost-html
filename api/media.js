@@ -9,7 +9,7 @@
 
 // ⚠️ REPLACE THIS with your Cloud Name (it's at the top of your Cloudinary dashboard).
 // It's a string like "dkayhost" or "akaymightyy" — NOT a number.
-const CLOUDINARY_CLOUD_NAME = "REPLACE_WITH_YOUR_CLOUD_NAME";
+const CLOUDINARY_CLOUD_NAME = "dbmtqgs3v";
 const CLOUDINARY_UPLOAD_PRESET = "kayhost";
 
 module.exports = async (req, res) => {

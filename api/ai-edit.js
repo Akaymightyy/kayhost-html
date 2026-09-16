@@ -1,11 +1,17 @@
 // /api/ai-edit.js — receives { html, selector, instruction }, calls Gemini to rewrite HTML.
-// Server-side only — the API key is hardcoded here and never exposed to the browser.
-// NOTE: If you push this to a PUBLIC GitHub repo, anyone can read this key.
-// Use a private repo, or replace with env var if going public.
+// Server-side only — API key never exposed to browser.
+//
+// The key "Kayhost_API_Key" is NOT a valid Gemini API key.
+// You need a real key from https://aistudio.google.com/apikey (starts with "AIza...")
+//
+// Option 1: Set GEMINI_API_KEY in Vercel → Settings → Environment Variables
+// Option 2: Hardcode it below (replace the string below with your real key)
+
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// Hardcoded Gemini API key — get yours from https://aistudio.google.com/apikey
-const GEMINI_API_KEY = "Kayhost_API_Key";
+// Use env var if set, otherwise use the hardcoded key.
+// Replace "YOUR_GEMINI_KEY_HERE" with your actual key from https://aistudio.google.com/apikey
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "YOUR_GEMINI_KEY_HERE";
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -20,8 +26,12 @@ module.exports = async (req, res) => {
     if (!html || !instruction) {
       return res.status(400).json({ error: "html and instruction are required" });
     }
-    if (html.length > 500_000) {
-      return res.status(413).json({ error: "HTML too large" });
+
+    // Check if the key is valid (not a placeholder)
+    if (!GEMINI_API_KEY || GEMINI_API_KEY === "YOUR_GEMINI_KEY_HERE" || GEMINI_API_KEY.length < 20) {
+      return res.status(500).json({
+        error: "Gemini API key not configured. Get a free key from https://aistudio.google.com/apikey and add it to api/ai-edit.js or set GEMINI_API_KEY in Vercel env vars."
+      });
     }
 
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -69,6 +79,11 @@ Return ONLY the raw HTML:`;
     return res.status(200).json({ html: updatedHtml });
   } catch (err) {
     console.error("[ai-edit] Error:", err);
-    return res.status(500).json({ error: err.message || "AI edit failed" });
+    // Return a clean, user-facing error
+    let msg = err.message || "AI edit failed";
+    if (msg.includes("API key not valid")) {
+      msg = "Gemini API key is invalid. Get a free key from https://aistudio.google.com/apikey";
+    }
+    return res.status(500).json({ error: msg });
   }
 };
