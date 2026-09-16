@@ -3,25 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#08080C" />
-  <title>Kayhost HTML — Instant HTML hosting + AI editor</title>
-  <meta name="description" content="Paste HTML, get a live link in seconds. Click any element to edit with AI." />
+  <meta name="theme-color" content="#0A0A0B" />
+  <title>Kayhost HTML — Paste HTML. Get a link.</title>
+  <meta name="description" content="Dead-simple HTML hosting. Paste HTML, get a live link in seconds. AI-powered visual editor included." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #08080C; --bg2: #0E0E14;
-      --fg: #F5F5FA; --muted: #8B8B9A; --muted2: #555562;
-      --yellow: #FDE047; --yellow-glow: rgba(253,224,71,0.4);
-      --yellow-soft: rgba(253,224,71,0.12); --yellow-border: rgba(253,224,71,0.25);
-      --purple: #C084FC; --purple2: #A855F7; --purple-glow: rgba(192,132,252,0.4);
-      --purple-soft: rgba(192,132,252,0.12); --purple-border: rgba(192,132,252,0.25);
-      --primary: var(--purple); --primary-glow: var(--purple-glow);
-      --primary-soft: var(--purple-soft); --primary-border: var(--purple-border);
-      --glass: rgba(255,255,255,0.03);
-      --red: #FF6B6B; --amber: #f59e0b;
-      --radius: 10px; --radius-lg: 16px;
+      --bg: #0A0A0B; --bg2: #131316; --bg3: #1A1A1E;
+      --fg: #F5F5F7; --muted: #8E8E93; --muted2: #55555A;
+      --yellow: #FDE047; --yellow-hover: #FACC15;
+      --purple: #C084FC; --purple-hover: #A855F7;
+      --border: #26262A;
+      --red: #FF6B6B;
+      --radius: 8px; --radius-lg: 14px; --radius-xl: 20px;
       --font: 'Inter', system-ui, sans-serif;
       --display: 'Sora', 'Inter', sans-serif;
       --mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -29,159 +25,150 @@
     html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
     body {
       font-family: var(--font); background: var(--bg); color: var(--fg);
-      min-height: 100vh; overflow-x: hidden; position: relative;
+      min-height: 100vh; overflow-x: hidden;
       -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
       font-size: 15px; line-height: 1.6;
-    }
-    body::before {
-      content: ''; position: fixed; top: -10%; left: 50%; transform: translateX(-50%);
-      width: 600px; height: 600px; pointer-events: none; z-index: 0;
-      background: radial-gradient(circle, rgba(192,132,252,0.10) 0%, rgba(253,224,71,0.04) 40%, transparent 70%);
     }
     a { color: inherit; text-decoration: none; }
     button { font-family: inherit; cursor: pointer; border: 0; background: none; color: inherit; }
     input, textarea, select { font-family: inherit; font-size: 15px; color: var(--fg); }
-    ::selection { background: var(--purple); color: #08080C; }
+    ::selection { background: var(--purple); color: var(--bg); }
 
-    /* Typography — bold, stylish headings */
-    h1, h2, h3, h4 { font-family: var(--display); letter-spacing: -0.03em; line-height: 1.15; }
-    .gradient-text {
-      background: linear-gradient(135deg, #FDE047 0%, #C084FC 50%, #A855F7 100%);
-      -webkit-background-clip: text; background-clip: text;
-      -webkit-text-fill-color: transparent; color: transparent;
-    }
+    h1, h2, h3 { font-family: var(--display); letter-spacing: -0.03em; line-height: 1.15; }
 
-    .container { max-width: 900px; margin: 0 auto; padding: 0 16px; position: relative; z-index: 1; }
+    .container { max-width: 860px; margin: 0 auto; padding: 0 16px; }
 
     /* Topbar */
-    .topbar { padding: 20px 0; display: flex; align-items: center; justify-content: space-between; }
-    .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; font-family: var(--display); }
-    .brand-mark { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, var(--yellow), var(--purple)); display: grid; place-items: center; color: var(--bg); font-weight: 800; font-size: 15px; font-family: var(--display); box-shadow: 0 0 12px rgba(192,132,252,0.3); }
-    .nav-links { display: flex; gap: 6px; }
-    .nav-links button { padding: 8px 12px; border-radius: 8px; color: var(--muted); font-size: 13px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.15s; }
-    .nav-links button:hover { color: var(--purple); background: var(--purple-soft); }
-    .nav-links button.active { color: var(--yellow); background: var(--yellow-soft); }
+    .topbar { padding: 16px 0; display: flex; align-items: center; justify-content: space-between; }
+    .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; font-family: var(--display); }
+    .brand-mark { width: 26px; height: 26px; border-radius: 7px; background: var(--purple); display: grid; place-items: center; color: var(--bg); font-weight: 800; font-size: 14px; font-family: var(--display); }
+    .nav-links { display: flex; gap: 4px; align-items: center; }
+    .nav-links button { padding: 7px 12px; border-radius: 7px; color: var(--muted); font-size: 13px; font-weight: 500; transition: all 0.15s; }
+    .nav-links button:hover { color: var(--fg); background: var(--bg2); }
+    .nav-links button.active { color: var(--yellow); }
 
     /* Hero */
-    .hero { text-align: center; padding: 40px 0 24px; }
-    .hero h1 { font-size: clamp(28px, 6vw, 44px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
-    .hero h1 .gradient { background: linear-gradient(135deg, var(--yellow) 0%, var(--purple) 50%, var(--purple2) 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-    .hero p { color: var(--muted); font-size: 15px; margin-top: 12px; max-width: 420px; margin-left: auto; margin-right: auto; line-height: 1.6; }
+    .hero { text-align: center; padding: 40px 0 20px; }
+    .hero h1 { font-size: clamp(30px, 6vw, 48px); font-weight: 800; letter-spacing: -0.03em; }
+    .hero h1 .accent { color: var(--muted); }
+    .hero p { color: var(--muted); font-size: 16px; margin-top: 10px; max-width: 460px; margin-left: auto; margin-right: auto; line-height: 1.6; }
+    .hero .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: rgba(253,224,71,0.1); border: 1px solid rgba(253,224,71,0.2); color: var(--yellow); font-size: 12px; font-family: var(--mono); margin-bottom: 16px; }
 
-    /* Tabs */
-    .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
-    .tab { padding: 10px 16px; border-radius: 10px; color: var(--muted); font-size: 14px; font-weight: 600; transition: all 0.15s; cursor: pointer; }
-    .tab:hover { color: var(--fg); }
-    .tab.active { color: var(--yellow); background: var(--yellow-soft); border: 1px solid var(--yellow-border); }
-
-    /* Cards */
-    .card { background: var(--glass); border: 1px solid var(--purple-border); border-radius: var(--radius-lg); padding: 20px; backdrop-filter: blur(12px); }
+    /* Upload area */
+    .upload-zone { border: 2px dashed var(--border); border-radius: var(--radius-lg); padding: 40px 24px; text-align: center; transition: all 0.2s; margin-bottom: 16px; cursor: pointer; }
+    .upload-zone:hover, .upload-zone.dragover { border-color: var(--purple); background: rgba(192,132,252,0.04); }
+    .upload-zone .ico { width: 44px; height: 44px; border-radius: 50%; background: var(--bg2); display: grid; place-items: center; margin: 0 auto 12px; color: var(--purple); }
+    .upload-zone .ico svg { width: 20px; height: 20px; }
+    .upload-zone h3 { font-size: 17px; margin-bottom: 6px; }
+    .upload-zone p { color: var(--muted); font-size: 14px; }
+    .upload-zone .actions { display: flex; gap: 8px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
+    .upload-zone input { display: none; }
 
     /* Buttons */
-    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 16px; border-radius: var(--radius); font-weight: 600; font-size: 14px; font-family: var(--display); transition: all 0.2s; border: 1px solid transparent; min-height: 40px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 16px; border-radius: var(--radius); font-weight: 600; font-size: 14px; font-family: var(--display); transition: all 0.15s; border: 1px solid transparent; min-height: 40px; white-space: nowrap; }
     .btn:active { transform: scale(0.98); }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-primary { background: linear-gradient(135deg, var(--purple), var(--purple2)); color: var(--bg); }
-    .btn-primary:hover { box-shadow: 0 0 20px var(--purple-glow); }
-    .btn-yellow { background: linear-gradient(135deg, var(--yellow), #FBBF24); color: var(--bg); }
-    .btn-yellow:hover { box-shadow: 0 0 20px var(--yellow-glow); }
-    .btn-ghost { background: var(--glass); color: var(--fg); border-color: var(--purple-border); }
-    .btn-ghost:hover { border-color: var(--purple); color: var(--purple); }
+    .btn-yellow { background: var(--yellow); color: var(--bg); }
+    .btn-yellow:hover { background: var(--yellow-hover); }
+    .btn-purple { background: var(--purple); color: var(--bg); }
+    .btn-purple:hover { background: var(--purple-hover); }
+    .btn-ghost { background: transparent; color: var(--fg); border-color: var(--border); }
+    .btn-ghost:hover { border-color: var(--muted); }
     .btn-block { width: 100%; }
     .btn-lg { padding: 14px 20px; font-size: 15px; min-height: 48px; }
+    .btn-sm { padding: 7px 12px; font-size: 13px; min-height: 34px; border-radius: 7px; }
+    .btn svg { width: 16px; height: 16px; }
 
-    /* Form elements */
-    .textarea { width: 100%; padding: 12px; border-radius: var(--radius); background: rgba(255,255,255,0.02); border: 1px solid #1B1B25; color: var(--fg); font-family: var(--mono); font-size: 13px; line-height: 1.5; resize: vertical; min-height: 200px; transition: border 0.2s, box-shadow 0.2s; }
-    .textarea:focus { outline: none; border-color: var(--purple); box-shadow: 0 0 0 3px var(--purple-soft); }
-    .input, .select { width: 100%; padding: 10px 12px; border-radius: var(--radius); background: rgba(255,255,255,0.02); border: 1px solid #1B1B25; color: var(--fg); min-height: 40px; transition: border 0.2s, box-shadow 0.2s; }
-    .input:focus, .select:focus { outline: none; border-color: var(--yellow); box-shadow: 0 0 0 3px var(--yellow-soft); }
-    .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+    /* Textarea + form */
+    .textarea { width: 100%; padding: 14px; border-radius: var(--radius); background: var(--bg2); border: 1px solid var(--border); color: var(--fg); font-family: var(--mono); font-size: 13px; line-height: 1.5; resize: vertical; min-height: 220px; transition: border 0.15s; }
+    .textarea:focus { outline: none; border-color: var(--purple); }
+    .input { width: 100%; padding: 10px 14px; border-radius: var(--radius); background: var(--bg2); border: 1px solid var(--border); color: var(--fg); min-height: 40px; transition: border 0.15s; }
+    .input:focus { outline: none; border-color: var(--yellow); }
+    .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
     .field label { font-size: 13px; font-weight: 600; font-family: var(--display); }
-    .field .hint { font-size: 12px; color: var(--muted); }
 
-    /* Drop zone */
-    .dropzone { border: 2px dashed var(--purple-border); border-radius: var(--radius); padding: 24px; text-align: center; cursor: pointer; transition: all 0.15s; color: var(--muted); font-size: 14px; }
-    .dropzone:hover, .dropzone.dragover { border-color: var(--purple); background: var(--purple-soft); color: var(--purple); }
-    .dropzone input { display: none; }
-
-    /* TTL selector */
+    /* TTL */
     .ttl-row { display: flex; gap: 6px; flex-wrap: wrap; }
-    .ttl-opt { padding: 8px 12px; border-radius: 8px; background: var(--glass); border: 1px solid var(--purple-border); color: var(--muted); font-size: 13px; cursor: pointer; transition: all 0.15s; font-family: var(--display); font-weight: 500; }
-    .ttl-opt.active { background: var(--yellow-soft); color: var(--yellow); border-color: var(--yellow); }
+    .ttl-opt { padding: 8px 14px; border-radius: 7px; background: var(--bg2); border: 1px solid var(--border); color: var(--muted); font-size: 13px; cursor: pointer; transition: all 0.15s; font-family: var(--display); font-weight: 500; }
+    .ttl-opt.active { background: rgba(253,224,71,0.1); color: var(--yellow); border-color: var(--yellow); }
 
     /* Result link */
-    .result { margin-top: 16px; }
-    .link-box { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: var(--radius); background: var(--purple-soft); border: 1px solid var(--purple-border); font-family: var(--mono); font-size: 13px; color: var(--purple); word-break: break-all; }
-    .link-box .copy { margin-left: auto; flex-shrink: 0; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--purple-border); background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.05em; }
-    .link-box .copy:hover { color: var(--primary); border-color: var(--primary); }
+    .link-box { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-radius: var(--radius); background: rgba(192,132,252,0.08); border: 1px solid rgba(192,132,252,0.2); font-family: var(--mono); font-size: 13px; color: var(--purple); word-break: break-all; margin-top: 12px; }
+    .link-box .copy { margin-left: auto; flex-shrink: 0; padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(192,132,252,0.2); background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; font-family: var(--mono); text-transform: uppercase; }
+    .link-box .copy:hover { color: var(--purple); border-color: var(--purple); }
+
+    /* Card */
+    .card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; }
+
+    /* Feature grid */
+    .features { padding: 40px 0; }
+    .features h2 { font-size: clamp(22px, 4vw, 32px); font-weight: 700; text-align: center; margin-bottom: 24px; }
+    .features .eyebrow { text-align: center; font-family: var(--mono); font-size: 12px; color: var(--yellow); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .feature-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+    @media (min-width: 620px) { .feature-grid { grid-template-columns: 1fr 1fr; } }
+    .feature-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; transition: border 0.15s; }
+    .feature-card:hover { border-color: var(--muted2); }
+    .feature-card .ico { width: 32px; height: 32px; border-radius: 8px; background: rgba(192,132,252,0.1); color: var(--purple); display: grid; place-items: center; margin-bottom: 12px; }
+    .feature-card .ico.yellow { background: rgba(253,224,71,0.1); color: var(--yellow); }
+    .feature-card .ico svg { width: 16px; height: 16px; }
+    .feature-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .feature-card p { color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .feature-card .tags { margin-top: 8px; font-family: var(--mono); font-size: 11px; color: var(--muted2); }
 
     /* Preview */
-    .preview-wrap { margin-top: 16px; border: 1px solid var(--primary-border); border-radius: var(--radius-lg); overflow: hidden; }
-    .preview-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--primary-border); font-size: 13px; color: var(--muted); }
-    .preview-bar .actions { display: flex; gap: 6px; }
+    .preview-wrap { margin-top: 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+    .preview-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--bg2); border-bottom: 1px solid var(--border); font-size: 13px; color: var(--muted); }
     .preview-iframe { width: 100%; min-height: 400px; border: 0; background: white; }
-    .preview-iframe.editing { outline: 2px dashed var(--primary); }
+    .preview-iframe.editing { outline: 2px dashed var(--purple); }
 
-    /* AI editor panel */
-    .ai-panel { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg2); border-top: 1px solid var(--primary-border); padding: 16px; z-index: 100; transform: translateY(100%); transition: transform 0.3s; backdrop-filter: blur(12px); }
+    /* AI panel */
+    .ai-panel { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg2); border-top: 1px solid var(--border); padding: 16px; z-index: 100; transform: translateY(100%); transition: transform 0.3s; }
     .ai-panel.open { transform: translateY(0); }
     .ai-panel .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-    .ai-panel .head .title { font-size: 13px; font-family: var(--mono); color: var(--purple); }
-    .ai-panel .head .close { color: var(--muted); cursor: pointer; padding: 4px 8px; }
+    .ai-panel .title { font-size: 13px; font-family: var(--mono); color: var(--purple); }
+    .ai-panel .close { color: var(--muted); cursor: pointer; padding: 4px 8px; }
     .ai-panel .selector { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-bottom: 8px; word-break: break-all; }
     .ai-panel .row { display: flex; gap: 8px; }
-    .ai-panel input { flex: 1; padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px solid #1B2530; color: var(--fg); font-size: 14px; }
-    .ai-panel input:focus { outline: none; border-color: var(--primary); }
+    .ai-panel input { flex: 1; padding: 10px 14px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); color: var(--fg); font-size: 14px; }
+    .ai-panel input:focus { outline: none; border-color: var(--purple); }
 
     /* Dashboard */
     .site-list { display: flex; flex-direction: column; gap: 8px; }
-    .site-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--radius); background: var(--glass); border: 1px solid var(--primary-border); transition: border 0.15s; }
-    .site-item:hover { border-color: var(--primary); }
-    .site-item .thumb { width: 32px; height: 32px; border-radius: 8px; background: var(--primary-soft); display: grid; place-items: center; color: var(--primary); flex-shrink: 0; font-weight: 700; font-size: 13px; }
+    .site-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--radius); background: var(--bg2); border: 1px solid var(--border); transition: border 0.15s; }
+    .site-item:hover { border-color: var(--muted2); }
+    .site-item .thumb { width: 32px; height: 32px; border-radius: 8px; background: rgba(192,132,252,0.1); color: var(--purple); display: grid; place-items: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
     .site-item .info { flex: 1; min-width: 0; }
     .site-item .info .title { font-size: 14px; font-weight: 500; }
     .site-item .info .meta { font-size: 12px; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
     .site-item .actions { display: flex; gap: 4px; flex-shrink: 0; }
-    .site-item .actions button { padding: 6px 10px; border-radius: 6px; color: var(--muted); font-size: 11px; font-family: var(--mono); text-transform: uppercase; transition: color 0.15s; }
-    .site-item .actions button:hover { color: var(--primary); }
-    .site-item .actions .del:hover { color: var(--red); }
+    .site-item .actions button { padding: 6px 10px; border-radius: 6px; color: var(--muted); font-size: 11px; font-family: var(--mono); text-transform: uppercase; }
+    .site-item .actions button:hover { color: var(--yellow); }
 
     /* Toast */
-    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 12px 16px; border-radius: 10px; background: rgba(11,18,25,0.95); border: 1px solid var(--primary-border); backdrop-filter: blur(12px); z-index: 999; font-size: 13px; animation: slideUp 0.3s; max-width: 360px; }
+    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 12px 16px; border-radius: 10px; background: var(--bg2); border: 1px solid var(--border); z-index: 999; font-size: 13px; max-width: 360px; animation: slideUp 0.3s; }
     .toast.success { border-left: 3px solid var(--purple); }
     .toast.error { border-left: 3px solid var(--red); }
     @keyframes slideUp { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
-    /* Spinner */
     .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.15); border-top-color: var(--purple); border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* Section */
-    .section { padding: 16px 0 60px; }
-    .section-head { margin-bottom: 16px; }
+    .section { padding: 8px 0 60px; }
     .eyebrow { font-family: var(--mono); font-size: 12px; color: var(--yellow); text-transform: uppercase; letter-spacing: 0.1em; }
-    .section-head h2 { font-size: 20px; margin-top: 6px; }
-
-    /* Empty */
     .empty { text-align: center; padding: 32px 16px; color: var(--muted); }
-    .empty .ico { width: 48px; height: 48px; border-radius: 12px; background: var(--glass); border: 1px solid var(--primary-border); display: grid; place-items: center; margin: 0 auto 12px; color: var(--muted2); }
-
-    /* Mode toggle (editor/dashboard) */
-    .mode-tabs { display: flex; gap: 4px; margin-bottom: 16px; padding: 4px; background: var(--glass); border-radius: 10px; border: 1px solid var(--primary-border); }
-    .mode-tab { flex: 1; padding: 10px; text-align: center; border-radius: 8px; color: var(--muted); font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
-    .mode-tab.active { background: var(--primary-soft); color: var(--primary); }
+    .empty .ico { width: 48px; height: 48px; border-radius: 12px; background: var(--bg2); border: 1px solid var(--border); display: grid; place-items: center; margin: 0 auto 12px; color: var(--muted2); }
+    .hidden { display: none; }
   </style>
 </head>
 <body>
   <div id="app"></div>
-
   <script>
     /* ============================================================
-     *  KAYHOST HTML — Instant HTML hosting + AI editor
-     *  Single-file SPA. Backend = Vercel serverless functions in /api
+     *  KAYHOST HTML — single-file SPA
+     *  Backend = Vercel serverless functions in /api
+     *  AI = Gemini (server-side, key hardcoded in api/ai-edit.js)
      * ============================================================ */
 
-    // --- Helpers ---
     const $ = (s, r = document) => r.querySelector(s);
     const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
     function el(tag, attrs, ...children) {
@@ -210,70 +197,35 @@
     }
     function debounce(fn, wait = 300) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), wait); }; }
 
-    // --- State ---
-    const state = {
-      mode: "editor", // "editor" | "dashboard"
-      ttl: "7d",
-      html: "",
-      currentSiteId: null,
-      currentSiteUrl: null,
-      editing: false,
-      selectedElement: null,
-      selectedSelector: null,
-    };
+    const state = { mode: "editor", ttl: "7d", html: "", editing: false, selectedSelector: null };
 
-    // --- Browser ID (stored in localStorage) ---
     function getBrowserId() {
       let id = localStorage.getItem("kayhost-browser-id");
-      if (!id) {
-        id = "b_" + Math.random().toString(36).slice(2, 12) + Date.now().toString(36).slice(-4);
-        localStorage.setItem("kayhost-browser-id", id);
-      }
+      if (!id) { id = "b_" + Math.random().toString(36).slice(2, 12) + Date.now().toString(36).slice(-4); localStorage.setItem("kayhost-browser-id", id); }
       return id;
     }
 
-    // --- API calls ---
     async function apiDeploy(html, title, ttl) {
-      const res = await fetch("/api/deploy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ html, title, ttl, browserId: getBrowserId() }),
-      });
+      const res = await fetch("/api/deploy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ html, title, ttl, browserId: getBrowserId() }) });
       if (!res.ok) throw new Error((await res.json()).error || "Deploy failed");
       return res.json();
     }
-
     async function aiEdit(html, selector, instruction) {
-      const res = await fetch("/api/ai-edit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ html, selector, instruction }),
-      });
+      const res = await fetch("/api/ai-edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ html, selector, instruction }) });
       if (!res.ok) throw new Error((await res.json()).error || "AI edit failed");
       return res.json();
     }
-
     async function fetchSites() {
       const res = await fetch(`/api/sites?browserId=${getBrowserId()}`);
       if (!res.ok) return { sites: [] };
       return res.json();
     }
-
     async function uploadMedia(file) {
-      // Read file as base64 data URL
       const reader = new FileReader();
       return new Promise((resolve, reject) => {
         reader.onload = async () => {
           try {
-            const res = await fetch("/api/media", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                data: reader.result,
-                filename: file.name,
-                mimeType: file.type,
-              }),
-            });
+            const res = await fetch("/api/media", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: reader.result, filename: file.name, mimeType: file.type }) });
             if (!res.ok) throw new Error("Upload failed");
             const { url } = await res.json();
             resolve(url);
@@ -284,7 +236,6 @@
       });
     }
 
-    // --- Default HTML template ---
     const DEFAULT_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -306,7 +257,6 @@
 </body>
 </html>`;
 
-    // --- Render ---
     function render() {
       const app = $("#app");
       app.innerHTML = "";
@@ -316,7 +266,7 @@
       const brand = el("div", { class: "brand" });
       brand.innerHTML = `<span class="brand-mark">K</span><span>kayhost</span>`;
       const nav = el("div", { class: "nav-links" });
-      const editorBtn = el("button", { onclick: () => { state.mode = "editor"; render(); } }, "Editor");
+      const editorBtn = el("button", { onclick: () => { state.mode = "editor"; render(); } }, "New");
       const dashBtn = el("button", { onclick: () => { state.mode = "dashboard"; render(); renderDashboard(); } }, "My Pages");
       if (state.mode === "editor") editorBtn.classList.add("active");
       else dashBtn.classList.add("active");
@@ -334,162 +284,172 @@
       // Hero
       const hero = el("div", { class: "hero" });
       hero.innerHTML = `
-        <h1>Paste HTML. <span class="gradient">Get a live link.</span></h1>
-        <p>Or upload a file. Or click any element to edit with AI. Deploy in seconds.</p>
+        <div class="badge">✨ AI visual editor included</div>
+        <h1>Paste HTML. <span class="accent">Get a link.</span></h1>
+        <p>Dead-simple HTML hosting. Paste, upload, or drag a file — live in under 3 seconds. No signup required.</p>
       `;
       section.appendChild(hero);
 
-      // Editor card
-      const card = el("div", { class: "card", style: { marginBottom: "16px" } });
+      // Upload zone (main interaction)
+      const uploadZone = el("div", { class: "upload-zone" });
+      uploadZone.innerHTML = `
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+        <h3>Drop HTML here, or click to upload</h3>
+        <p>.html or .zip — or press ⌘V to paste</p>
+        <div class="actions">
+          <button class="btn btn-purple btn-sm" id="open-editor">📝 Paste HTML</button>
+          <button class="btn btn-ghost btn-sm" id="open-upload">Upload file</button>
+        </div>
+        <input type="file" id="file-input" accept=".html,.htm,.zip,image/*" />
+      `;
+      section.appendChild(uploadZone);
 
-      // Tabs (paste / upload)
-      const tabs = el("div", { class: "tabs" });
-      const pasteTab = el("div", { class: "tab active", text: "Paste HTML" });
-      const uploadTab = el("div", { class: "tab", text: "Upload file" });
-      tabs.append(pasteTab, uploadTab);
-      card.appendChild(tabs);
+      // File input + drag/drop
+      const fileInput = $("#file-input", uploadZone);
+      uploadZone.onclick = (e) => { if (e.target.tagName !== "BUTTON") fileInput.click(); };
+      uploadZone.addEventListener("dragover", (e) => { e.preventDefault(); uploadZone.classList.add("dragover"); });
+      uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("dragover"));
+      uploadZone.addEventListener("drop", (e) => { e.preventDefault(); uploadZone.classList.remove("dragover"); handleFile(e.dataTransfer.files[0]); });
+      fileInput.onchange = (e) => handleFile(e.target.files[0]);
+      $("#open-editor", uploadZone).onclick = (e) => { e.stopPropagation(); showEditor(); };
+      $("#open-upload", uploadZone).onclick = (e) => { e.stopPropagation(); fileInput.click(); };
 
-      // Paste area
-      const pasteArea = el("div", {});
+      // Editor (hidden initially, shown when "Paste HTML" is clicked)
+      const editorCard = el("div", { class: "card hidden", id: "editor-card", style: { marginTop: "16px" } });
+      section.appendChild(editorCard);
+
+      // Feature grid
+      const features = el("div", { class: "features" });
+      features.innerHTML = `
+        <div class="eyebrow">// what's in the box</div>
+        <h2>Only the things you'd actually use.</h2>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+            <h3>Instant deploy</h3>
+            <p>Paste HTML or drop a file — live in under 3 seconds.</p>
+            <div class="tags">~120ms deploy · instant CDN</div>
+          </div>
+          <div class="feature-card">
+            <div class="ico yellow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg></div>
+            <h3>AI visual editing</h3>
+            <p>Click any element, describe a change, watch it happen live.</p>
+            <div class="tags">element select · Gemini powered</div>
+          </div>
+          <div class="feature-card">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+            <h3>No signup required</h3>
+            <p>Publish without an account. Sign in later to manage.</p>
+            <div class="tags">anonymous · 7-day TTL</div>
+          </div>
+          <div class="feature-card">
+            <div class="ico yellow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+            <h3>Auto-expiry</h3>
+            <p>Set TTL on sites: 1 day, 7 days, 30 days, or never.</p>
+            <div class="tags">1d · 7d · 30d · never</div>
+          </div>
+        </div>
+      `;
+      section.appendChild(features);
+
+      app.appendChild(section);
+    }
+
+    function showEditor() {
+      const card = $("#editor-card");
+      if (!card) return;
+      card.classList.remove("hidden");
+      card.innerHTML = "";
+
+      // Textarea
       const textarea = el("textarea", { class: "textarea", placeholder: "Paste your HTML here…", spellcheck: "false" });
       textarea.value = state.html || DEFAULT_HTML;
       textarea.addEventListener("input", debounce(() => { state.html = textarea.value; updatePreview(); }, 500));
-      pasteArea.appendChild(textarea);
+      card.appendChild(textarea);
 
-      // Upload area (hidden by default)
-      const uploadArea = el("div", { class: "hidden" });
-      const dropzone = el("div", { class: "dropzone" });
-      dropzone.innerHTML = `<strong>Drop an HTML file here</strong><br/>or click to browse<br/><small>.html or .zip supported</small>`;
-      const fileInput = el("input", { type: "file", accept: ".html,.htm,.zip" });
-      dropzone.appendChild(fileInput);
-      dropzone.onclick = () => fileInput.click();
-      dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("dragover"); });
-      dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
-      dropzone.addEventListener("drop", (e) => { e.preventDefault(); dropzone.classList.remove("dragover"); handleFile(e.dataTransfer.files[0]); });
-      fileInput.addEventListener("change", (e) => handleFile(e.target.files[0]));
-      uploadArea.appendChild(dropzone);
-
-      card.append(pasteArea, uploadArea);
-
-      // Tab switching
-      pasteTab.onclick = () => { pasteTab.classList.add("active"); uploadTab.classList.remove("active"); pasteArea.classList.remove("hidden"); uploadArea.classList.add("hidden"); };
-      uploadTab.onclick = () => { uploadTab.classList.add("active"); pasteTab.classList.remove("active"); uploadArea.classList.remove("hidden"); pasteArea.classList.add("hidden"); };
-
-      // TTL selector
-      const ttlField = el("div", { class: "field", style: { marginTop: "12px" } });
+      // TTL + title row
+      const row = el("div", { style: { display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "12px" } });
+      const ttlField = el("div", { class: "field", style: { flex: "1 1 200px", margin: 0 } });
       ttlField.innerHTML = `<label>Expiry</label>`;
       const ttlRow = el("div", { class: "ttl-row" });
-      const ttls = [["1d", "1 day"], ["7d", "7 days"], ["30d", "30 days"], ["never", "Never"]];
-      ttls.forEach(([val, label]) => {
+      [["1d", "1 day"], ["7d", "7 days"], ["30d", "30 days"], ["never", "Never"]].forEach(([val, label]) => {
         const opt = el("div", { class: "ttl-opt" + (state.ttl === val ? " active" : ""), text: label });
         opt.onclick = () => { state.ttl = val; ttlRow.querySelectorAll(".ttl-opt").forEach(o => o.classList.remove("active")); opt.classList.add("active"); };
         ttlRow.appendChild(opt);
       });
       ttlField.appendChild(ttlRow);
-      card.appendChild(ttlField);
-
-      // Title field
-      const titleField = el("div", { class: "field", style: { marginTop: "12px" } });
-      titleField.innerHTML = `<label>Page title <span style="color: var(--muted2)">(optional)</span></label>`;
-      const titleInput = el("input", { class: "input", placeholder: "My awesome page", value: "Untitled" });
+      const titleField = el("div", { class: "field", style: { flex: "1 1 200px", margin: 0 } });
+      titleField.innerHTML = `<label>Page title</label>`;
+      const titleInput = el("input", { class: "input", placeholder: "My page", value: "Untitled" });
       titleField.appendChild(titleInput);
-      card.appendChild(titleField);
+      row.append(ttlField, titleField);
+      card.appendChild(row);
 
       // Deploy button
-      const deployBtn = el("button", { class: "btn btn-primary btn-block btn-lg", style: { marginTop: "12px" } }, "🚀 Deploy & get link");
+      const deployBtn = el("button", { class: "btn btn-yellow btn-block btn-lg", style: { marginTop: "14px" } }, "🚀 Deploy & get link");
       card.appendChild(deployBtn);
 
-      // Result area
-      const result = el("div", { class: "result" });
+      // Result
+      const result = el("div", { id: "result" });
       card.appendChild(result);
 
       deployBtn.onclick = async () => {
         const html = textarea.value.trim();
         if (!html) { toast("Paste some HTML first", "error"); return; }
         deployBtn.disabled = true;
-        const orig = deployBtn.textContent;
         deployBtn.innerHTML = `<span class="spinner"></span> Deploying…`;
         try {
           state.html = html;
-          const { id, url } = await apiDeploy(html, titleInput.value || "Untitled", state.ttl);
-          state.currentSiteId = id;
-          state.currentSiteUrl = url;
+          const { url } = await apiDeploy(html, titleInput.value || "Untitled", state.ttl);
           result.innerHTML = `
-            <div class="link-box">
-              <span>${escapeHtml(url)}</span>
-              <button class="copy" id="copy-link">copy</button>
-            </div>
-            <div style="display: flex; gap: 6px; margin-top: 8px;">
-              <a class="btn btn-primary btn-block" href="${escapeHtml(url)}" target="_blank" rel="noopener">Open live page →</a>
-            </div>
+            <div class="link-box"><span>${escapeHtml(url)}</span><button class="copy" id="copy-link">copy</button></div>
+            <a class="btn btn-purple btn-block" href="${escapeHtml(url)}" target="_blank" rel="noopener" style="margin-top:8px;">Open live page →</a>
           `;
-          $("#copy-link", result).onclick = () => {
-            navigator.clipboard.writeText(url).then(() => toast("Link copied!", "success"));
-          };
-          toast("Deployed! Your link is live.", "success");
-        } catch (err) {
-          toast(err.message, "error");
-        } finally {
-          deployBtn.disabled = false;
-          deployBtn.innerHTML = orig;
-        }
+          $("#copy-link", result).onclick = () => navigator.clipboard.writeText(url).then(() => toast("Link copied!", "success"));
+          toast("Deployed! Link is live.", "success");
+        } catch (err) { toast(err.message, "error"); }
+        finally { deployBtn.disabled = false; deployBtn.textContent = "🚀 Deploy & get link"; }
       };
 
-      section.appendChild(card);
+      // Preview
+      const previewWrap = el("div", { class: "preview-wrap", style: { marginTop: "16px" } });
+      previewWrap.innerHTML = `
+        <div class="preview-bar">
+          <span>preview</span>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-ghost btn-sm" id="toggle-ai">✨ AI edit</button>
+            <button class="btn btn-ghost btn-sm" id="refresh-preview">↻</button>
+          </div>
+        </div>
+        <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-same-origin"></iframe>
+      `;
+      card.appendChild(previewWrap);
 
-      // Preview + AI editor
-      const previewCard = el("div", { class: "card", style: { marginTop: "16px" } });
-      const previewHead = el("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" } });
-      previewHead.innerHTML = `<span class="eyebrow">// live preview</span>`;
-      const editToggle = el("button", { class: "btn btn-ghost btn-sm" }, "✨ AI edit mode");
-      editToggle.onclick = () => toggleEditMode();
-      previewHead.appendChild(editToggle);
-      previewCard.appendChild(previewHead);
+      $("#refresh-preview", previewWrap).onclick = () => updatePreview();
+      $("#toggle-ai", previewWrap).onclick = () => toggleEditMode();
 
-      const previewWrap = el("div", { class: "preview-wrap" });
-      const previewBar = el("div", { class: "preview-bar" });
-      previewBar.innerHTML = `<span>preview</span><span class="actions"><button class="btn btn-ghost btn-sm" id="refresh-preview">↻</button></span>`;
-      previewWrap.appendChild(previewBar);
-      const iframe = el("iframe", { class: "preview-iframe", id: "preview-iframe", sandbox: "allow-same-origin" });
-      previewWrap.appendChild(iframe);
-      previewCard.appendChild(previewWrap);
-      section.appendChild(previewCard);
-
-      app.appendChild(section);
-
-      // Wire refresh
-      $("#refresh-preview", previewBar).onclick = () => updatePreview();
-
-      // Initial preview
       state.html = textarea.value;
       updatePreview();
     }
 
-    // --- Preview + AI click-to-edit ---
     function updatePreview() {
       const iframe = $("#preview-iframe");
       if (!iframe) return;
       iframe.srcdoc = state.html || "";
-      
-      // After load, wire up click-to-edit if in editing mode
-      iframe.onload = () => {
-        if (state.editing) wireElementClicks(iframe);
-      };
+      iframe.onload = () => { if (state.editing) wireElementClicks(iframe); };
     }
 
     function toggleEditMode() {
       state.editing = !state.editing;
       const iframe = $("#preview-iframe");
       if (!iframe) return;
-      
       if (state.editing) {
         iframe.classList.add("editing");
-        toast("Click any element to edit it with AI", "success");
+        toast("Click any element to edit with AI", "success");
         wireElementClicks(iframe);
         showAiPanel();
       } else {
         iframe.classList.remove("editing");
-        iframe.contentWindow?.postMessage({ type: "kayhost-stop" }, "*");
         hideAiPanel();
       }
     }
@@ -498,62 +458,39 @@
       try {
         const doc = iframe.contentDocument;
         if (!doc) return;
-        
-        // Inject a script that handles element selection
         const script = doc.createElement("script");
         script.textContent = `
           document.addEventListener("click", function(e) {
             if (!window.__kayhostEditing) return;
-            e.preventDefault();
-            e.stopPropagation();
-            // Remove previous highlight
+            e.preventDefault(); e.stopPropagation();
             const prev = document.querySelector("[data-kayhost-selected]");
             if (prev) { prev.style.outline = ""; delete prev.dataset.kayhostSelected; }
-            // Highlight this element
             e.target.style.outline = "2px solid #C084FC";
             e.target.dataset.kayhostSelected = "1";
-            // Send selector to parent
-            window.parent.postMessage({ 
-              type: "kayhost-select", 
-              selector: getSelector(e.target) 
-            }, "*");
+            window.parent.postMessage({ type: "kayhost-select", selector: getSelector(e.target) }, "*");
           }, true);
-          
           function getSelector(el) {
             if (el.id) return "#" + el.id;
-            let path = [];
-            let current = el;
+            let path = [], current = el;
             while (current && current !== document.body) {
-              let selector = current.tagName.toLowerCase();
-              if (current.className && typeof current.className === "string") {
-                const classes = current.className.trim().split(/\\s+/).slice(0, 2).join(".");
-                if (classes) selector += "." + classes;
-              }
-              const parent = current.parentElement;
-              if (parent) {
-                const siblings = Array.from(parent.children).filter(c => c.tagName === current.tagName);
-                if (siblings.length > 1) {
-                  selector += ":nth-of-type(" + (siblings.indexOf(current) + 1) + ")";
-                }
-              }
-              path.unshift(selector);
-              current = current.parentElement;
+              let s = current.tagName.toLowerCase();
+              if (current.className && typeof current.className === "string") { const c = current.className.trim().split(/\\s+/).slice(0,2).join("."); if (c) s += "." + c; }
+              const p = current.parentElement;
+              if (p) { const sib = Array.from(p.children).filter(c => c.tagName === current.tagName); if (sib.length > 1) s += ":nth-of-type(" + (sib.indexOf(current)+1) + ")"; }
+              path.unshift(s); current = current.parentElement;
             }
             return path.join(" > ");
           }
         `;
         doc.body.appendChild(script);
-      } catch (e) {
-        console.warn("Couldn't wire element clicks:", e);
-      }
+      } catch (e) {}
     }
 
-    // Listen for element selection from iframe
     window.addEventListener("message", (e) => {
       if (e.data.type === "kayhost-select") {
         state.selectedSelector = e.data.selector;
-        const selEl = $("#ai-selector");
-        if (selEl) selEl.textContent = "Selected: " + e.data.selector;
+        const sel = $("#ai-selector");
+        if (sel) sel.textContent = "Selected: " + e.data.selector;
       }
     });
 
@@ -562,54 +499,33 @@
       if (!panel) {
         panel = el("div", { class: "ai-panel", id: "ai-panel" });
         panel.innerHTML = `
-          <div class="head">
-            <span class="title">✨ AI editor</span>
-            <span class="close" id="ai-close">✕</span>
-          </div>
+          <div class="head"><span class="title">✨ AI editor</span><span class="close" id="ai-close">✕</span></div>
           <div class="selector" id="ai-selector">Click any element in the preview…</div>
-          <div class="row">
-            <input type="text" id="ai-instruction" placeholder="Describe the change… (e.g. make the heading red and bigger)" />
-            <button class="btn btn-primary" id="ai-apply">Apply</button>
-          </div>
+          <div class="row"><input type="text" id="ai-instruction" placeholder="Describe the change…" /><button class="btn btn-purple" id="ai-apply">Apply</button></div>
         `;
         document.body.appendChild(panel);
         $("#ai-close", panel).onclick = () => { state.editing = false; $("#preview-iframe")?.classList.remove("editing"); hideAiPanel(); };
         $("#ai-apply", panel).onclick = async () => {
           const instruction = $("#ai-instruction", panel).value.trim();
-          if (!instruction) { toast("Describe what you want to change", "error"); return; }
+          if (!instruction) { toast("Describe what you want", "error"); return; }
           const btn = $("#ai-apply", panel);
-          btn.disabled = true;
-          btn.innerHTML = `<span class="spinner"></span>`;
+          btn.disabled = true; btn.innerHTML = `<span class="spinner"></span>`;
           try {
             const { html } = await aiEdit(state.html, state.selectedSelector, instruction);
             state.html = html;
             updatePreview();
-            // Update textarea
-            const ta = $(".textarea");
-            if (ta) ta.value = html;
+            const ta = $(".textarea"); if (ta) ta.value = html;
             toast("AI applied the change!", "success");
             $("#ai-instruction", panel).value = "";
-          } catch (err) {
-            toast(err.message, "error");
-          } finally {
-            btn.disabled = false;
-            btn.textContent = "Apply";
-          }
+          } catch (err) { toast(err.message, "error"); }
+          finally { btn.disabled = false; btn.textContent = "Apply"; }
         };
-        // Enter key to submit
-        $("#ai-instruction", panel).addEventListener("keydown", (e) => {
-          if (e.key === "Enter") { e.preventDefault(); $("#ai-apply", panel).click(); }
-        });
+        $("#ai-instruction", panel).addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("#ai-apply", panel).click(); } });
       }
       panel.classList.add("open");
     }
+    function hideAiPanel() { const p = $("#ai-panel"); if (p) p.classList.remove("open"); }
 
-    function hideAiPanel() {
-      const panel = $("#ai-panel");
-      if (panel) panel.classList.remove("open");
-    }
-
-    // --- File upload handler ---
     async function handleFile(file) {
       if (!file) return;
       toast("Loading file…", "info");
@@ -617,38 +533,25 @@
         if (file.name.endsWith(".html") || file.name.endsWith(".htm")) {
           const text = await file.text();
           state.html = text;
-          const ta = $(".textarea");
-          if (ta) ta.value = text;
+          showEditor();
+          const ta = $(".textarea"); if (ta) ta.value = text;
           updatePreview();
           toast("File loaded!", "success");
-        } else if (file.name.endsWith(".zip")) {
-          toast("ZIP upload coming soon — please paste HTML for now", "error");
-        } else {
-          // Maybe it's an image
+        } else if (file.type.startsWith("image/")) {
           toast("Uploading image…", "info");
           const url = await uploadMedia(file);
-          const ta = $(".textarea");
-          if (ta) {
-            ta.value += `\n<img src="${url}" alt="uploaded image" />\n`;
-            state.html = ta.value;
-            updatePreview();
-          }
-          toast(`Image uploaded: ${url}`, "success");
+          showEditor();
+          const ta = $(".textarea"); if (ta) { ta.value += `\n<img src="${url}" alt="" />\n`; state.html = ta.value; updatePreview(); }
+          toast("Image uploaded!", "success");
+        } else if (file.name.endsWith(".zip")) {
+          toast("ZIP upload coming soon", "error");
         }
-      } catch (err) {
-        toast(err.message, "error");
-      }
+      } catch (err) { toast(err.message, "error"); }
     }
 
-    // --- Dashboard ---
     function renderDashboardContainer(app) {
       const section = el("div", { class: "section container" });
-      const head = el("div", { class: "section-head" });
-      head.innerHTML = `<div class="eyebrow">// dashboard</div><h2>Your pages</h2>`;
-      section.appendChild(head);
-      const list = el("div", { class: "site-list", id: "site-list" });
-      list.innerHTML = `<div class="empty"><div class="spinner"></div><br/>Loading…</div>`;
-      section.appendChild(list);
+      section.innerHTML = `<div class="eyebrow">// dashboard</div><h2 style="font-size:22px;margin:6px 0 16px;">Your pages</h2><div class="site-list" id="site-list"><div class="empty"><div class="spinner"></div></div></div>`;
       app.appendChild(section);
     }
 
@@ -657,60 +560,29 @@
       if (!list) return;
       try {
         const { sites } = await fetchSites();
-        if (!sites.length) {
-          list.innerHTML = `
-            <div class="empty">
-              <div class="ico">📄</div>
-              <h3>No pages yet</h3>
-              <p>Paste some HTML and hit Deploy to see your pages here.</p>
-            </div>
-          `;
-          return;
-        }
+        if (!sites.length) { list.innerHTML = `<div class="empty"><div class="ico">📄</div><h3>No pages yet</h3><p>Paste HTML and hit Deploy.</p></div>`; return; }
         list.innerHTML = "";
         sites.forEach((s) => {
           const item = el("div", { class: "site-item" });
           const initials = (s.title || "U").slice(0, 2).toUpperCase();
           const expiry = s.expiresAt ? formatExpiry(s.expiresAt) : "Never expires";
           const url = `${location.origin}/site/${s.id}`;
-          item.innerHTML = `
-            <div class="thumb">${escapeHtml(initials)}</div>
-            <div class="info">
-              <div class="title">${escapeHtml(s.title || "Untitled")}</div>
-              <div class="meta">${escapeHtml(expiry)} · ${new Date(s.createdAt).toLocaleDateString()}</div>
-            </div>
-            <div class="actions">
-              <a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color: inherit;">open</a>
-              <button class="copy-btn" data-url="${escapeHtml(url)}">copy</button>
-              <button class="del" data-id="${escapeHtml(s.id)}">del</button>
-            </div>
-          `;
+          item.innerHTML = `<div class="thumb">${escapeHtml(initials)}</div><div class="info"><div class="title">${escapeHtml(s.title)}</div><div class="meta">${escapeHtml(expiry)} · ${new Date(s.createdAt).toLocaleDateString()}</div></div><div class="actions"><a href="${escapeHtml(url)}" target="_blank">open</a><button class="copy-btn" data-url="${escapeHtml(url)}">copy</button></div>`;
           list.appendChild(item);
         });
-        // Wire copy + delete
-        $$(".copy-btn", list).forEach(b => b.onclick = () => { navigator.clipboard.writeText(b.dataset.url).then(() => toast("Link copied!", "success")); });
-        $$(".del", list).forEach(b => b.onclick = async () => {
-          if (!confirm("Delete this page?")) return;
-          // Note: no delete API endpoint in v1 — we just remove from the list
-          // A proper delete would need a /api/delete endpoint
-          toast("Delete coming soon — use Firebase Console", "info");
-        });
-      } catch (err) {
-        list.innerHTML = `<div class="empty"><div class="ico">⚠</div><p>${escapeHtml(err.message)}</p></div>`;
-      }
+        $$(".copy-btn", list).forEach(b => b.onclick = () => navigator.clipboard.writeText(b.dataset.url).then(() => toast("Copied!", "success")));
+      } catch (err) { list.innerHTML = `<div class="empty"><div class="ico">⚠</div><p>${escapeHtml(err.message)}</p></div>`; }
     }
 
     function formatExpiry(expiresAt) {
-      const remaining = expiresAt - Date.now();
-      if (remaining <= 0) return "Expired";
-      const days = Math.floor(remaining / 86400000);
-      const hours = Math.floor((remaining % 86400000) / 3600000);
-      if (days > 0) return `${days}d ${hours}h left`;
-      if (hours > 0) return `${hours}h left`;
+      const r = expiresAt - Date.now();
+      if (r <= 0) return "Expired";
+      const d = Math.floor(r / 86400000), h = Math.floor((r % 86400000) / 3600000);
+      if (d > 0) return `${d}d ${h}h left`;
+      if (h > 0) return `${h}h left`;
       return "Expires soon";
     }
 
-    // --- Init ---
     render();
   </script>
 </body>

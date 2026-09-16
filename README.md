@@ -1,35 +1,16 @@
-# Kayhost HTML — Instant HTML hosting + AI editor
+# Kayhost HTML — Paste HTML. Get a link.
 
-Paste HTML, get a live link in seconds. Click any element to edit with AI.
+Dead-simple HTML hosting. Paste HTML, get a live link in seconds. AI-powered visual editor included.
 
-## What's in the zip
+## Setup (3 steps — no env vars)
 
-```
-kayhost/
-├── index.html              ← Single-file SPA (frontend)
-├── vercel.json             ← Rewrites: /site/{id} → /api/site/[id]
-├── package.json            ← Dependencies: firebase, @google/generative-ai
-├── README.md               ← This file
-└── api/
-    ├── _firebase.js         ← Firebase init (config hardcoded)
-    ├── deploy.js            ← POST /api/deploy → saves HTML, returns URL
-    ├── sites.js             ← GET /api/sites → lists sites by browser
-    ├── ai-edit.js           ← POST /api/ai-edit → Gemini rewrites HTML
-    ├── media.js             ← POST /api/media → uploads images to Storage
-    └── site/[id].js        ← GET /site/{id} → serves raw HTML
-```
-
-## Setup (3 steps — no env vars needed)
-
-### 1. Install dependencies
+### 1. Install + Firestore rules
 ```bash
 cd kayhost
 npm install
 ```
 
-### 2. Firestore rules
 Firebase Console → Firestore → Rules → paste:
-
 ```
 rules_version = '2';
 service cloud.firestore {
@@ -46,53 +27,42 @@ service cloud.firestore {
 }
 ```
 
+### 2. Cloudinary (for image uploads)
+1. Go to https://cloudinary.com → sign up (free tier = 25 credits/month)
+2. Dashboard → copy your **Cloud Name**
+3. Settings → Upload → enable **unsigned uploads** → create an upload preset
+4. Open `api/media.js` → replace the two placeholders:
+   ```js
+   const CLOUDINARY_CLOUD_NAME = "your-cloud-name";
+   const CLOUDINARY_UPLOAD_PRESET = "your-upload-preset";
+   ```
+
 ### 3. Deploy
 ```bash
 vercel --prod
 ```
-
-Or: push to GitHub → import to Vercel → deploy. Done.
-
----
-
-## Everything is hardcoded — no env vars
-
-The Firebase config and Gemini API key are **hardcoded directly in the API files**:
-
-- `api/_firebase.js` — Firebase config (the same one you gave me)
-- `api/ai-edit.js` — Gemini API key (hardcoded)
-- `api/media.js` — Firebase Storage config (hardcoded)
-
-**Why this is safe:** Vercel serverless functions run on Vercel's servers. The browser never sees this code — only the HTTP response. So your API key stays private.
-
-**⚠️ IMPORTANT:** If you push to a **public GitHub repo**, anyone can read the credentials. Either:
-- Use a **private** repo (recommended)
-- Or if you must use a public repo, replace the hardcoded values with environment variables before pushing
+Or: push to GitHub → import to Vercel → done.
 
 ---
 
-## How to change the Gemini API key
+## What's hardcoded (no env vars)
 
-If the default key doesn't work (or you want your own):
+- `api/_firebase.js` — Firebase config (uses the client SDK, no service account needed)
+- `api/ai-edit.js` — Gemini API key
+- `api/media.js` — Cloudinary cloud name + upload preset
+
+⚠️ Use a **private** GitHub repo if you push the code (so nobody can read your keys).
+
+## How to get your Gemini API key
 1. Go to https://aistudio.google.com/apikey
 2. Create a key (starts with `AIza...`)
-3. Open `api/ai-edit.js`
-4. Replace `"Kayhost_API_Key"` with your key
-5. Re-deploy
+3. Open `api/ai-edit.js` → replace `"Kayhost_API_Key"` with your key
 
 ## Features
 
-1. **Paste & Deploy** — paste HTML → get live URL in seconds
-2. **Auto-Expiry** — 1 day / 7 days / 30 days / never
-3. **AI Visual Editor** — click any element → describe change in English → Gemini rewrites HTML
-4. **Dashboard** — list all your pages with expiry countdown
-5. **Media Uploads** — upload images to Firebase Storage
-
-## Tech notes
-
-- **Frontend:** Single `index.html` — vanilla JS, no frameworks
-- **Backend:** Vercel serverless functions in `/api`
-- **Database:** Firebase Firestore — `sites` collection
-- **AI:** Google Gemini 1.5 Flash (server-side only)
-- **Storage:** Firebase Storage (for image uploads)
-- **No env vars needed** — everything hardcoded in server-side files
+- ✅ **Paste & Deploy** — paste HTML → get live URL in seconds
+- ✅ **Auto-Expiry** — 1d / 7d / 30d / never
+- ✅ **AI Visual Editor** — click any element → describe change → Gemini rewrites HTML
+- ✅ **Dashboard** — list your pages with expiry countdown
+- ✅ **Image Uploads** — via Cloudinary
+- ✅ **Dark theme** — black bg, yellow + purple accents (solid, no gradients)
