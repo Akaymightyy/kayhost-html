@@ -1,12 +1,21 @@
 // /api/admin.js — Server-side admin data endpoint
-// Checks admin status using the Firebase client SDK.
-// Admin emails are hardcoded below + checked against Firestore admins collection.
+// SECURITY: every request must include a valid Firebase ID token in the
+// Authorization header: "Authorization: Bearer <idToken>". The token is
+// verified server-side with the Firebase Admin SDK — uid/email are taken
+// ONLY from the verified token, never from the request body/query.
 
 const { getDb } = require("./_firebase");
-const { collection, getDocs, doc, getDoc, query, where, orderBy, limit } = require("firebase/firestore");
+const { verifyRequestToken } = require("./_admin-firebase");
+const { collection, getDocs, doc, getDoc, setDoc, deleteDoc, updateDoc } = require("firebase/firestore");
 
-// Admin emails — replace with your real admin email(s)
-const ADMIN_EMAILS = ["kayhost@admin.com"];
+// Admin emails — replace with your real admin email(s), comma-separated,
+// set as the ADMIN_EMAILS environment variable in Vercel.
+// This is a secondary allow-list; the primary source of truth is the
+// Firestore "admins" collection, which can be managed from the dashboard.
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
+  .split(",")
+  .map(e => e.trim().toLowerCase())
+  .filter(Boolean);
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -14,27 +23,31 @@ module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.status(204).end();
 
-  // The client sends the Firebase ID token in the Authorization header
-  // For MVP simplicity, we accept the uid directly (client-side Firebase Auth
-  // verifies the token; the client sends the verified uid + email)
-  const { uid, email, action } = req.body || req.query || {};
-
-  // Check admin status
-  const isAdmin = email && ADMIN_EMAILS.includes(email.toLowerCase());
-  if (!isAdmin) {
-    // Also check Firestore admins collection
-    try {
-      const db = getDb();
-      const adminDoc = await getDoc(doc(db, "admins", uid || "x"));
-      if (!adminDoc.exists()) {
-        return res.status(403).json({ error: "Not authorized" });
-      }
-    } catch (e) {
-      return res.status(403).json({ error: "Not authorized" });
-    }
+  // --- Verify the caller is a real, authenticated user ---
+  let decoded;
+  try {
+    decoded = await verifyRequestToken(req);
+  } catch (e) {
+    return res.status(e.status || 401).json({ error: e.message });
   }
+  const uid = decoded.uid;
+  const email = (decoded.email || "").toLowerCase();
 
   const db = getDb();
+
+  // --- Verify the caller is actually an admin ---
+  let isAdmin = ADMIN_EMAILS.includes(email);
+  if (!isAdmin) {
+    try {
+      const adminDoc = await getDoc(doc(db, "admins", uid));
+      isAdmin = adminDoc.exists();
+    } catch (e) {
+      isAdmin = false;
+    }
+  }
+  if (!isAdmin) {
+    return res.status(403).json({ error: "Not authorized" });
+  }
 
   try {
     // ===== GET: Fetch admin dashboard data =====
@@ -42,7 +55,6 @@ module.exports = async (req, res) => {
       const section = req.query.section || "overview";
 
       if (section === "overview") {
-        // Fetch all sites and users for stats
         const sitesSnap = await getDocs(collection(db, "sites"));
         const sites = [];
         sitesSnap.forEach(d => sites.push({ id: d.id, ...d.data() }));
@@ -58,7 +70,6 @@ module.exports = async (req, res) => {
         const weekCount = sites.filter(s => s.createdAt > weekAgo).length;
         const monthCount = sites.filter(s => s.createdAt > monthAgo).length;
 
-        // Sites per day (last 30 days) for chart
         const perDay = [];
         for (let i = 29; i >= 0; i--) {
           const dayStart = today.getTime() - i * 86400000;
@@ -67,7 +78,6 @@ module.exports = async (req, res) => {
           perDay.push({ date: new Date(dayStart).toISOString().slice(0, 10), count });
         }
 
-        // Users count
         let usersCount = 0;
         try {
           const usersSnap = await getDocs(collection(db, "users"));
@@ -121,23 +131,20 @@ module.exports = async (req, res) => {
     if (req.method === "POST") {
       const { action, targetId, targetType, newTtl, newStatus, adminEmail } = req.body || {};
 
-      // Log the action
+      // Log the action — adminEmail comes from the VERIFIED token, not the request body
       try {
-        const { setDoc } = require("firebase/firestore");
         await setDoc(doc(db, "audit", "log_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6)), {
-          action, targetId, targetType, adminEmail: email || "unknown",
+          action, targetId, targetType, adminEmail: email,
           timestamp: Date.now(),
         });
       } catch (e) {}
 
       if (action === "deleteSite") {
-        const { deleteDoc } = require("firebase/firestore");
         await deleteDoc(doc(db, "sites", targetId));
         return res.status(200).json({ success: true });
       }
 
       if (action === "extendTtl") {
-        const { updateDoc } = require("firebase/firestore");
         let newExpiry = null;
         if (newTtl === "1d") newExpiry = Date.now() + 86400000;
         else if (newTtl === "7d") newExpiry = Date.now() + 604800000;
@@ -146,21 +153,22 @@ module.exports = async (req, res) => {
         return res.status(200).json({ success: true });
       }
 
-      if (action === "suspendUser" || action === "promoteAdmin" || action === "demoteAdmin") {
-        const { setDoc, deleteDoc } = require("firebase/firestore");
-        if (action === "promoteAdmin") {
-          await setDoc(doc(db, "admins", targetId), { email: adminEmail || "", addedBy: email, addedAt: Date.now() });
-        } else if (action === "demoteAdmin") {
-          await deleteDoc(doc(db, "admins", targetId));
-        } else if (action === "suspendUser") {
-          const { updateDoc } = require("firebase/firestore");
-          await updateDoc(doc(db, "users", targetId), { suspended: newStatus === "true" });
-        }
+      if (action === "promoteAdmin") {
+        await setDoc(doc(db, "admins", targetId), { email: adminEmail || "", addedBy: email, addedAt: Date.now() });
+        return res.status(200).json({ success: true });
+      }
+
+      if (action === "demoteAdmin") {
+        await deleteDoc(doc(db, "admins", targetId));
+        return res.status(200).json({ success: true });
+      }
+
+      if (action === "suspendUser") {
+        await updateDoc(doc(db, "users", targetId), { suspended: newStatus === "true" });
         return res.status(200).json({ success: true });
       }
 
       if (action === "updateSettings") {
-        const { setDoc } = require("firebase/firestore");
         const settings = req.body.settings || {};
         for (const [key, value] of Object.entries(settings)) {
           await setDoc(doc(db, "settings", key), { value, updatedAt: Date.now() });

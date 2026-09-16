@@ -1,16 +1,14 @@
 // /api/ai-edit.js — receives { html, selector, instruction }, calls Gemini to rewrite HTML.
 // Server-side only — API key never exposed to browser.
 //
-// The key "Kayhost_API_Key" is NOT a valid Gemini API key.
-// You need a real key from https://aistudio.google.com/apikey (starts with "AIza...")
-//
-// Option 1: Set GEMINI_API_KEY in Vercel → Settings → Environment Variables
-// Option 2: Hardcode it below (replace the string below with your real key)
+// Requires GEMINI_API_KEY as a Vercel environment variable. Get a real key
+// from https://aistudio.google.com/apikey — valid keys start with "AIzaSy".
+// No hardcoded fallback — a missing/malformed key must fail loudly, not
+// silently attempt a request that will always 400.
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// Use env var if set, otherwise use the hardcoded key.
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "AQ.Ab8RN6LjZ6Jn2oiBrQj6GkkOzjJk31FqW1kZda3PkFNXjpMF8Q";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -26,10 +24,10 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: "html and instruction are required" });
     }
 
-    // Check if the key is valid (not a placeholder)
-    if (!GEMINI_API_KEY || GEMINI_API_KEY === "YOUR_GEMINI_KEY_HERE" || GEMINI_API_KEY.length < 20) {
+    // Check if the key is present and looks like a real Gemini key
+    if (!GEMINI_API_KEY || !GEMINI_API_KEY.startsWith("AIzaSy")) {
       return res.status(500).json({
-        error: "Gemini API key not configured. Get a free key from https://aistudio.google.com/apikey and add it to api/ai-edit.js or set GEMINI_API_KEY in Vercel env vars."
+        error: "GEMINI_API_KEY is missing or malformed. Get a free key from https://aistudio.google.com/apikey (it should start with 'AIzaSy') and set it in Vercel → Settings → Environment Variables."
       });
     }
 
