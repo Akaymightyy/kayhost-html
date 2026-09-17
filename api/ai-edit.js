@@ -49,10 +49,24 @@ IMPORTANT INSTRUCTIONS:
 
 Return ONLY the raw HTML:`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-    });
+    // Try models in order — fallback if one is deprecated
+    const models = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash", "gemini-flash-latest"];
+    let response = null;
+    let lastError = null;
+    for (const modelName of models) {
+      try {
+        response = await ai.models.generateContent({
+          model: modelName,
+          contents: prompt,
+        });
+        break;
+      } catch (modelErr) {
+        lastError = modelErr;
+        console.warn("[ai-edit] Model " + modelName + " failed:", modelErr.message?.slice(0, 100));
+        continue;
+      }
+    }
+    if (!response) throw lastError || new Error("All Gemini models failed");
 
     let updatedHtml = response.text;
 
