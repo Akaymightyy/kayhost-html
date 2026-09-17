@@ -123,11 +123,8 @@
     /* ===== Hero ===== */
     .hero { text-align: center; padding: 60px 0 32px; }
     .hero h1 { font-size: clamp(32px, 7vw, 52px); font-weight: 700; letter-spacing: -0.03em; }
-    .hero h1 .secondary { color: #ffffff; position: relative; display: inline-block; padding: 2px 12px; }
-    .hero h1 .secondary::after {
-      content: ''; position: absolute; inset: 0; border-radius: 8px;
-      background: rgba(139, 92, 246, 0.35);
-      z-index: -1;
+    .hero h1 .secondary { color: #ffffff; position: relative; display: inline-block; padding: 2px 12px; border-radius: 8px; background: #8B5CF6; }
+    .hero h1 .secondary {
       animation: purpleShake 4s ease-in-out infinite;
     }
     @keyframes purpleShake {
@@ -142,7 +139,7 @@
       80% { transform: translateX(1px) translateY(-2px); }
       90% { transform: translateX(-2px) translateY(1px); }
     }
-    @media (prefers-reduced-motion: reduce) { .hero h1 .secondary::after { animation: none; } }
+    @media (prefers-reduced-motion: reduce) { .hero h1 .secondary { animation: none; } }
     .hero p { color: var(--fg-secondary); font-size: 17px; margin-top: 14px; max-width: 480px; margin-left: auto; margin-right: auto; }
 
     /* ===== Deploy zone ===== */
