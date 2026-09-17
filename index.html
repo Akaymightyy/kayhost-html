@@ -1331,47 +1331,23 @@
     }
 
     // --- Sign-in functions (exposed on window) ---
-    // Helper: translate Firebase error codes to human messages
+    // Helper: translate Firebase error codes to clean user messages (no debug info)
     function authErrorMessage(err) {
       const code = err.code || "";
-      const msg = err.message || "Sign-in failed";
-      if (code === "auth/network-request-failed") {
-        return "Can't reach Firebase. Your domain (" + window.location.hostname + ") is probably NOT in Firebase authorized domains. Go to: Firebase Console → Authentication → Settings → Authorized domains → Add your domain.";
-      }
-      if (code === "auth/too-many-requests") {
-        return "Too many failed attempts. Wait 5 minutes, then try again.";
-      }
-      if (code === "auth/invalid-credential" || code === "auth/wrong-password") {
-        return "Wrong email or password. Make sure you created the account in Firebase Console → Authentication → Users → Add User.";
-      }
-      if (code === "auth/user-not-found") {
-        return "No account found with that email. Create it in Firebase Console → Authentication → Users → Add User.";
-      }
-      if (code === "auth/operation-not-allowed") {
-        return "This sign-in method is not enabled. Go to: Firebase Console → Authentication → Sign-in method → Enable Email/Password (and Google, GitHub).";
-      }
-      if (code === "auth/popup-closed-by-user") {
-        return "Sign-in cancelled.";
-      }
-      if (code === "auth/popup-blocked") {
-        return "Popup blocked by browser. Allow popups for this site and try again.";
-      }
-      if (code === "auth/account-exists-with-different-credential") {
-        return "Account exists with a different sign-in method. Try the other option.";
-      }
-      if (code === "auth/unauthorized-domain") {
-        return "This domain is not authorized. Add '" + window.location.hostname + "' to Firebase Console → Authentication → Settings → Authorized domains.";
-      }
-      if (code === "auth/api-key-not-valid" || msg.includes("API key not valid")) {
-        return "Firebase API key is not valid. Check the firebaseConfig in index.html.";
-      }
-      if (code.includes("auth/")) {
-        return "Auth error: " + code.replace("auth/", "") + ". Check Firebase Console settings.";
-      }
-      return msg;
+      if (code === "auth/network-request-failed") return "Connection error. Please try again.";
+      if (code === "auth/too-many-requests") return "Too many attempts. Please wait a few minutes and try again.";
+      if (code === "auth/invalid-credential" || code === "auth/wrong-password") return "Invalid email or password.";
+      if (code === "auth/user-not-found") return "Invalid email or password.";
+      if (code === "auth/operation-not-allowed") return "Connection error. Please try again.";
+      if (code === "auth/popup-closed-by-user") return "Sign-in cancelled.";
+      if (code === "auth/popup-blocked") return "Popup blocked. Please allow popups and try again.";
+      if (code === "auth/account-exists-with-different-credential") return "Account exists with a different sign-in method. Try the other option.";
+      if (code === "auth/unauthorized-domain") return "Connection error. Please try again.";
+      if (code === "auth/api-key-not-valid" || (err.message || "").includes("API key not valid")) return "Connection error. Please try again.";
+      return "Connection error. Please try again.";
     }
 
-    // Helper: show a detailed error with a checklist in the sign-in modal
+    // Helper: show a clean error in the sign-in modal (no debug info for users)
     function showAuthErrorInModal(message) {
       const modal = document.getElementById("signin-modal");
       if (!modal) { toast(message, "error"); return; }
@@ -1383,7 +1359,7 @@
       const errDiv = document.createElement("div");
       errDiv.className = "auth-error";
       errDiv.style.cssText = "margin-top:16px;padding:14px;border-radius:10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);color:#F87171;font-size:13px;line-height:1.5;";
-      errDiv.innerHTML = '<strong>Sign-in failed:</strong><br/>' + escapeHtml(message) + '<br/><br/><details style="color:#8B8B9A;font-size:12px;"><summary>Setup checklist</summary><ul style="margin-top:8px;padding-left:16px;"><li>1. Firebase Console → Authentication → Sign-in method → Enable Email/Password</li><li>2. Firebase Console → Authentication → Users → Add User (kayhost@admin.com / 363438)</li><li>3. Firebase Console → Authentication → Settings → Authorized domains → Add ' + escapeHtml(window.location.hostname) + '</li><li>4. Firebase Console → Authentication → Sign-in method → Enable Google</li></ul></details>';
+      errDiv.textContent = message;
       card.appendChild(errDiv);
       toast(message, "error");
     }
