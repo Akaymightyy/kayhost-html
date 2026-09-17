@@ -604,6 +604,58 @@
     </div>
   </main>
 
+  <!-- ===== Static page views (no folders needed) ===== -->
+  <main id="view-docs" class="container dashboard-view" style="padding-top: 32px; display: none;">
+    <h2 class="section-title">API Docs</h2>
+    <div class="editor-card" style="margin-bottom:12px;">
+      <h3 style="font-size:15px;margin-bottom:6px;color:var(--purple-text);">POST /api/deploy</h3>
+      <p style="color:var(--fg-secondary);font-size:14px;">Save HTML and get a live link. Body: <code style="background:var(--bg-elevated);padding:2px 6px;border-radius:4px;">{ html, title, ttl, browserId }</code></p>
+    </div>
+    <div class="editor-card" style="margin-bottom:12px;">
+      <h3 style="font-size:15px;margin-bottom:6px;color:var(--purple-text);">GET /api/sites?browserId=xxx</h3>
+      <p style="color:var(--fg-secondary);font-size:14px;">List sites by browser ID.</p>
+    </div>
+    <div class="editor-card" style="margin-bottom:12px;">
+      <h3 style="font-size:15px;margin-bottom:6px;color:var(--purple-text);">POST /api/ai-edit</h3>
+      <p style="color:var(--fg-secondary);font-size:14px;">Send HTML + instruction to Gemini AI. Body: <code style="background:var(--bg-elevated);padding:2px 6px;border-radius:4px;">{ html, selector, instruction }</code></p>
+    </div>
+    <div class="editor-card" style="margin-bottom:12px;">
+      <h3 style="font-size:15px;margin-bottom:6px;color:var(--purple-text);">POST /api/media</h3>
+      <p style="color:var(--fg-secondary);font-size:14px;">Upload image to Cloudinary. Body: <code style="background:var(--bg-elevated);padding:2px 6px;border-radius:4px;">{ data, filename, mimeType }</code></p>
+    </div>
+    <div class="editor-card" style="margin-bottom:12px;">
+      <h3 style="font-size:15px;margin-bottom:6px;color:var(--purple-text);">POST /api/clone</h3>
+      <p style="color:var(--fg-secondary);font-size:14px;">Fetch a URL's HTML (SSRF-protected). Body: <code style="background:var(--bg-elevated);padding:2px 6px;border-radius:4px;">{ url }</code></p>
+    </div>
+    <div class="editor-card">
+      <h3 style="font-size:15px;margin-bottom:6px;color:var(--purple-text);">GET /site/:id</h3>
+      <p style="color:var(--fg-secondary);font-size:14px;">Serve deployed site's raw HTML.</p>
+    </div>
+  </main>
+
+  <main id="view-changelog" class="container dashboard-view" style="padding-top: 32px; display: none;">
+    <h2 class="section-title">Changelog</h2>
+    <div class="editor-card" style="margin-bottom:8px;"><h3 style="font-size:15px;">v9</h3><p style="color:var(--fg-secondary);font-size:14px;">Fixed Gemini API (gemini-2.5-flash), Clone SSRF protection, docs/changelog/pricing pages, branding fix.</p></div>
+    <div class="editor-card" style="margin-bottom:8px;"><h3 style="font-size:15px;">v8</h3><p style="color:var(--fg-secondary);font-size:14px;">Google + GitHub sign-in, admin dashboard, template management, suspend/pro controls.</p></div>
+    <div class="editor-card" style="margin-bottom:8px;"><h3 style="font-size:15px;">v1-v7</h3><p style="color:var(--fg-secondary);font-size:14px;">Initial release, service worker fixes, Firestore removal, admin API fixes.</p></div>
+  </main>
+
+  <main id="view-pricing" class="container dashboard-view" style="padding-top: 32px; display: none;">
+    <h2 class="section-title">Pricing</h2>
+    <div class="editor-card" style="margin-bottom:12px;"><h3 style="font-size:18px;color:var(--yellow-text);">Free — $0</h3><p style="color:var(--fg-secondary);font-size:14px;margin-top:8px;">Unlimited HTML deploys, 7-day TTL, AI editor, no signup required.</p></div>
+    <div class="editor-card"><h3 style="font-size:18px;color:var(--purple-text);">Pro — $9/mo (coming soon)</h3><p style="color:var(--fg-secondary);font-size:14px;margin-top:8px;">Never-expiring sites, custom domains, multi-page uploads, priority AI, advanced analytics.</p></div>
+  </main>
+
+  <main id="view-privacy" class="container dashboard-view" style="padding-top: 32px; display: none;">
+    <h2 class="section-title">Privacy Policy</h2>
+    <div class="editor-card"><p style="color:var(--fg-secondary);font-size:14px;line-height:1.6;">We store your name, email, and profile photo when you sign in. Deployed sites are stored with their HTML content and expiry date. Anonymous users are tracked by a random browser ID. Data is used solely to provide the service. Sites expire based on your chosen TTL. We use Firebase (Google), Cloudinary, and Google Gemini. Contact: kayhost@admin.com</p></div>
+  </main>
+
+  <main id="view-terms" class="container dashboard-view" style="padding-top: 32px; display: none;">
+    <h2 class="section-title">Terms of Service</h2>
+    <div class="editor-card"><p style="color:var(--fg-secondary);font-size:14px;line-height:1.6;">Don't host illegal content, malware, phishing, or spam. We reserve the right to delete any violating site. Service is provided "as is" without warranties. You own your content. We may suspend abusive accounts. Continued use after changes constitutes acceptance.</p></div>
+  </main>
+
   <!-- ===== AI Panel ===== -->
   <div class="ai-overlay" id="ai-overlay" onclick="closeAiPanel()"></div>
   <div class="ai-panel" id="ai-panel">
@@ -667,12 +719,11 @@
       <div class="footer-links">
         <a href="#features">Features</a>
         <a href="#faq">FAQ</a>
-        <a href="/docs">Docs</a>
-        <a href="/changelog">Changelog</a>
-        <a href="/blog">Blog</a>
-        <a href="/pricing">Pricing</a>
-        <a href="/privacy">Privacy</a>
-        <a href="/terms">Terms</a>
+        <a href="#" onclick="switchView('docs')">Docs</a>
+        <a href="#" onclick="switchView('changelog')">Changelog</a>
+        <a href="#" onclick="switchView('pricing')">Pricing</a>
+        <a href="#" onclick="switchView('privacy')">Privacy</a>
+        <a href="#" onclick="switchView('terms')">Terms</a>
         <a href="#" onclick="switchView('sites')">My Sites</a>
       </div>
       <div class="footer-copy">© 2026 Kayhost HTML. Built for builders.</div>
@@ -705,15 +756,15 @@
 
     // --- View switching ---
     function switchView(view) {
-      // Hide all views
-      ["new", "sites", "templates", "clipboard", "tools", "settings", "admin"].forEach(v => {
+      // Hide all views (including new static page views)
+      ["new", "sites", "templates", "clipboard", "tools", "settings", "admin", "docs", "changelog", "pricing", "privacy", "terms"].forEach(v => {
         const el = document.getElementById("view-" + v);
         if (el) { el.classList.remove("visible"); el.style.display = "none"; }
       });
       document.getElementById("view-new").classList.toggle("hidden", view !== "new");
       // Show the selected view
       const target = document.getElementById("view-" + view);
-      if (target) { target.classList.add("visible"); target.style.display = view === "admin" ? "block" : ""; }
+      if (target) { target.classList.add("visible"); target.style.display = "block"; }
       // Update nav active state
       document.querySelectorAll("[data-view]").forEach(b => b.classList.toggle("active", b.dataset.view === view));
       document.getElementById("nav-links").classList.remove("open");
@@ -1550,7 +1601,7 @@
     }
     window.loadAdminData = loadAdminData;
 
-    function escapeHtml(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+    // escapeHtml is defined at line 1325 — do NOT redeclare here (ESM strict mode error)
 
     function renderOverview(content, data) {
       const s = data.sites || {};

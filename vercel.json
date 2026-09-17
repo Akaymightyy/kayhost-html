@@ -11,12 +11,6 @@
     { "source": "/site/:id", "destination": "/api/site/[id].js" },
     { "source": "/__/auth/:catch*", "destination": "/index.html" },
     { "source": "/admin", "destination": "/index.html" },
-    { "source": "/docs", "destination": "/docs/index.html" },
-    { "source": "/changelog", "destination": "/changelog/index.html" },
-    { "source": "/blog", "destination": "/blog/index.html" },
-    { "source": "/pricing", "destination": "/pricing/index.html" },
-    { "source": "/privacy", "destination": "/privacy/index.html" },
-    { "source": "/terms", "destination": "/terms/index.html" },
-    { "source": "/((?!api|site|_next|sw.js|manifest.json|icon|favicon|apple|robots|docs|changelog|blog|pricing|privacy|terms|__).*)", "destination": "/index.html" }
+    { "source": "/((?!api|site|_next|sw.js|manifest.json|icon|favicon|apple|robots|__).*)", "destination": "/index.html" }
   ]
 }
