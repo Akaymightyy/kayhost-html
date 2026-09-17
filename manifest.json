@@ -1,6 +1,6 @@
 {
   "name": "Kayhost HTML — Paste HTML, get a link",
-  "short_name": "Kayhost",
+  "short_name": "Kayhost HTML",
   "description": "Dead-simple HTML hosting. Paste HTML, get a live link in seconds. AI-powered visual editor included.",
   "start_url": "/",
   "scope": "/",
