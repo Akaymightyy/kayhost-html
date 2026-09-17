@@ -49,24 +49,46 @@ IMPORTANT INSTRUCTIONS:
 
 Return ONLY the raw HTML:`;
 
-    // Try models in order — fallback if one is deprecated
+    // Try models in order — fallback if one is deprecated/unavailable
     const models = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash", "gemini-flash-latest"];
     let response = null;
     let lastError = null;
     for (const modelName of models) {
-      try {
-        response = await ai.models.generateContent({
-          model: modelName,
-          contents: prompt,
-        });
-        break;
-      } catch (modelErr) {
-        lastError = modelErr;
-        console.warn("[ai-edit] Model " + modelName + " failed:", modelErr.message?.slice(0, 100));
-        continue;
+      for (let attempt = 0; attempt < 2; attempt++) { // retry once on 503
+        try {
+          response = await ai.models.generateContent({
+            model: modelName,
+            contents: prompt,
+          });
+          break;
+        } catch (modelErr) {
+          lastError = modelErr;
+          const errMsg = (modelErr.message || "").toLowerCase();
+          console.warn("[ai-edit] Model " + modelName + " attempt " + (attempt+1) + " failed:", (modelErr.message || "").slice(0, 100));
+          // If 503 (overloaded), wait 2s and retry once
+          if (errMsg.includes("503") || errMsg.includes("unavailable") || errMsg.includes("high demand")) {
+            if (attempt === 0) { await new Promise(r => setTimeout(r, 2000)); continue; }
+          }
+          // If model not found (404), skip to next model immediately
+          break;
+        }
       }
+      if (response) break;
     }
-    if (!response) throw lastError || new Error("All Gemini models failed");
+    if (!response) {
+      let msg = "AI editor is currently unavailable. ";
+      if (lastError) {
+        const e = (lastError.message || "").toLowerCase();
+        if (e.includes("503") || e.includes("unavailable") || e.includes("high demand")) {
+          msg = "Gemini is overloaded right now (503). Please wait 1-2 minutes and try again. This is temporary.";
+        } else if (e.includes("404") || e.includes("not found") || e.includes("no longer available")) {
+          msg = "All Gemini models are deprecated. Check https://ai.google.dev for the latest model name and update api/ai-edit.js.";
+        } else if (e.includes("401") || e.includes("api key not valid") || e.includes("unauthenticated")) {
+          msg = "Gemini API key authentication failed. Check that GEMINI_API_KEY in Vercel matches exactly what's in Google AI Studio.";
+        }
+      }
+      return res.status(500).json({ error: msg });
+    }
 
     let updatedHtml = response.text;
 
