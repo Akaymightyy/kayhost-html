@@ -7,7 +7,7 @@
     { "source": "/api/admin", "destination": "/api/admin.js" },
     { "source": "/api/clone", "destination": "/api/clone.js" },
     { "source": "/api/signin", "destination": "/api/signin.js" },
-    { "source": "/api/signup", "destination": "/api/signup.js" },
+    { "source": "/api/save-user", "destination": "/api/save-user.js" },
     { "source": "/site/:id", "destination": "/api/site/[id].js" },
     { "source": "/__/auth/:catch*", "destination": "/index.html" },
     { "source": "/admin", "destination": "/index.html" },

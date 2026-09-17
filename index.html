@@ -123,7 +123,17 @@
     /* ===== Hero ===== */
     .hero { text-align: center; padding: 60px 0 32px; }
     .hero h1 { font-size: clamp(32px, 7vw, 52px); font-weight: 700; letter-spacing: -0.03em; }
-    .hero h1 .secondary { color: var(--fg-secondary); }
+    .hero h1 .secondary { color: var(--fg-secondary); position: relative; }
+    .hero h1 .secondary::after {
+      content: ''; position: absolute; inset: -4px -8px; border-radius: 8px;
+      background: linear-gradient(135deg, rgba(167,139,250,0.15), rgba(167,139,250,0.05));
+      z-index: -1; animation: purplePulse 3s ease-in-out infinite;
+    }
+    @keyframes purplePulse {
+      0%, 100% { transform: translateX(-4px); opacity: 0.6; }
+      50% { transform: translateX(4px); opacity: 1; }
+    }
+    @media (prefers-reduced-motion: reduce) { .hero h1 .secondary::after { animation: none; } }
     .hero p { color: var(--fg-secondary); font-size: 17px; margin-top: 14px; max-width: 480px; margin-left: auto; margin-right: auto; }
 
     /* ===== Deploy zone ===== */
@@ -362,7 +372,7 @@
         <a href="#faq">FAQ</a>
       </nav>
       <div style="display: flex; gap: 8px; align-items: center;">
-        <div id="auth-area"><button class="btn btn-ghost btn-sm" onclick="document.getElementById('signin-modal').classList.remove('hidden')">Sign in</button></div>
+        <div id="auth-area"></div>
         <button class="theme-toggle" onclick="toggleTheme()" id="theme-toggle" title="Toggle theme" aria-label="Toggle theme">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="theme-icon"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         </button>
@@ -612,8 +622,8 @@
   <div id="signin-modal" class="hidden" style="position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)this.classList.add('hidden')">
     <div class="editor-card" style="max-width:380px;width:100%;text-align:center;">
       <img src="/icon-192.png" alt="Kayhost" style="width:48px;height:48px;border-radius:12px;margin:0 auto 16px;" />
-      <h3 style="font-size:18px;margin-bottom:6px;" id="signin-title">Sign in to Kayhost</h3>
-      <p style="color:var(--fg-secondary);font-size:14px;margin-bottom:20px;" id="signin-subtitle">Save your sites across devices and manage your account.</p>
+      <h3 style="font-size:18px;margin-bottom:6px;">Sign in to Kayhost</h3>
+      <p style="color:var(--fg-secondary);font-size:14px;margin-bottom:20px;">Save your sites across devices and manage your account.</p>
       <button class="btn btn-ghost btn-block" style="margin-bottom:8px;" onclick="signInWithGoogle()" id="google-btn">
         <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/></svg>
         Continue with Google
@@ -625,14 +635,10 @@
       <div style="margin:16px 0; border-top:1px solid var(--border); position:relative;">
         <span style="position:absolute; top:-8px; left:50%; transform:translateX(-50%); background:var(--bg-card); padding:0 8px; color:var(--fg-muted); font-size:12px;">or</span>
       </div>
-      <input class="input" id="signup-name-input" type="text" placeholder="Name" style="margin-bottom:8px;display:none;" />
       <input class="input" id="email-input" type="email" placeholder="Email" style="margin-bottom:8px;" />
       <input class="input" id="password-input" type="password" placeholder="Password" style="margin-bottom:10px;" />
-      <button class="btn btn-purple btn-block" onclick="submitAuthForm()" id="email-btn">Sign in with email</button>
-      <p style="color:var(--fg-muted);font-size:13px;margin-top:14px;" id="signin-toggle-text">
-        Don't have an account? <a href="#" onclick="event.preventDefault();toggleSignupMode()" style="color:var(--purple-text);text-decoration:underline;">Create one</a>
-      </p>
-      <p style="color:var(--fg-muted);font-size:12px;margin-top:10px;">You can still use Kayhost without signing in — your sites are tracked by browser.</p>
+      <button class="btn btn-purple btn-block" onclick="signInWithEmail()" id="email-btn">Sign in with email</button>
+      <p style="color:var(--fg-muted);font-size:12px;margin-top:16px;">You can still use Kayhost without signing in — your sites are tracked by browser.</p>
     </div>
   </div>
 
@@ -646,6 +652,7 @@
       <button class="ttl-opt active" onclick="switchAdminTab('overview')">Overview</button>
       <button class="ttl-opt" onclick="switchAdminTab('users')">Users</button>
       <button class="ttl-opt" onclick="switchAdminTab('sites')">Sites</button>
+      <button class="ttl-opt" onclick="switchAdminTab('templates')">Templates</button>
       <button class="ttl-opt" onclick="switchAdminTab('moderation')">Moderation</button>
       <button class="ttl-opt" onclick="switchAdminTab('health')">Health</button>
       <button class="ttl-opt" onclick="switchAdminTab('audit')">Audit Log</button>
@@ -1075,22 +1082,15 @@
     // Show browser ID in settings
     function showBrowserId() { const el = document.getElementById("settings-browser-id"); if (el) el.textContent = getBrowserId(); }
 
-    // --- Service worker registration ---
+    // --- Service worker: UNREGISTER any existing one (kills stale cache) ---
     if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(r => r.unregister().then(() => {
+          // Also clear all caches
+          caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+        }));
+      }).catch(() => {});
     }
-
-    // --- Fallback stubs — overridden by the real Firebase module once it
-    // loads successfully. If the module fails (network/CDN blocked), these
-    // stay active and give a clear error instead of silently doing nothing. ---
-    window.signInWithGoogle = window.signInWithGitHub = window.signInWithEmail =
-    window.signUpWithEmail = window.submitAuthForm = function() {
-      toast("Can't reach the sign-in service. Try switching networks (e.g. WiFi instead of mobile data) or a different browser.", "error");
-    };
-    window.checkAdminAccess = function() {
-      toast("Can't reach the sign-in service right now. Try WiFi or a different browser, then try again.", "error");
-    };
-    window.toggleSignupMode = function() {};
 
     // --- Triple-click logo → admin dashboard ---
     // This is the ONLY way to access admin. No nav link, no user menu link.
@@ -1157,44 +1157,11 @@
     const auth = getAuth(app);
     // NOTE: No Firestore client-side — all DB operations go through /api/* endpoints
 
-    // This is just for UI convenience (show/hide the Admin button) — the
-    // REAL check happens server-side in api/admin.js, which verifies your
-    // Firebase ID token and cannot be spoofed from the browser.
-    const ADMIN_EMAILS = ["awwalabdul891@gmail.com", "kayhost@admin.com"];
+    // Admin emails — replace with your real admin email(s)
+    const ADMIN_EMAILS = ["kayhost@admin.com"];
 
     let currentUser = null;
     let userIsAdmin = false;
-    let isSignupMode = false;
-
-    // --- Get a fresh Firebase ID token for authenticated API calls ---
-    // Used for every /api/admin request instead of sending raw uid/email —
-    // the server verifies this token itself, it never trusts client claims.
-    window.getIdToken = async function() {
-      if (auth.currentUser) {
-        try { return await auth.currentUser.getIdToken(); } catch (e) {}
-      }
-      // Fall back to the REST sign-in session (email/password flow)
-      const stored = localStorage.getItem("kayhost-user");
-      if (stored) {
-        try { return (JSON.parse(stored) || {}).idToken || null; } catch (e) {}
-      }
-      return null;
-    };
-
-    window.toggleSignupMode = function() {
-      isSignupMode = !isSignupMode;
-      document.getElementById("signin-title").textContent = isSignupMode ? "Create your Kayhost account" : "Sign in to Kayhost";
-      document.getElementById("signin-subtitle").textContent = isSignupMode ? "Sign up to save your sites across devices." : "Save your sites across devices and manage your account.";
-      document.getElementById("signup-name-input").style.display = isSignupMode ? "block" : "none";
-      document.getElementById("email-btn").textContent = isSignupMode ? "Create account" : "Sign in with email";
-      document.getElementById("signin-toggle-text").innerHTML = isSignupMode
-        ? 'Already have an account? <a href="#" onclick="event.preventDefault();toggleSignupMode()" style="color:var(--purple-text);text-decoration:underline;">Sign in</a>'
-        : 'Don\'t have an account? <a href="#" onclick="event.preventDefault();toggleSignupMode()" style="color:var(--purple-text);text-decoration:underline;">Create one</a>';
-    };
-
-    window.submitAuthForm = function() {
-      return isSignupMode ? signUpWithEmail() : signInWithEmail();
-    };
 
     // --- Auth state listener ---
     // Also check localStorage for REST API session (bypasses reCAPTCHA)
@@ -1236,7 +1203,7 @@
               <div id="user-menu" class="hidden" style="position:absolute;right:0;top:40px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:4px;z-index:50;min-width:140px;box-shadow:var(--shadow-lg);">
                 <button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;" onclick="document.getElementById('user-menu').classList.add('hidden');switchView('sites')">My Sites</button>
                 <button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;" onclick="document.getElementById('user-menu').classList.add('hidden');switchView('settings')">Settings</button>
-                ${userIsAdmin ? `<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;color:var(--purple-text);" onclick="document.getElementById('user-menu').classList.add('hidden');switchView('admin');loadAdminData('overview')">Admin</button>` : ""}
+                ${userIsAdmin ? `` : ""}
                 <button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;color:var(--red);" onclick="doSignOut()">Sign out</button>
               </div>
             </div>
@@ -1346,17 +1313,35 @@
       const errDiv = document.createElement("div");
       errDiv.className = "auth-error";
       errDiv.style.cssText = "margin-top:16px;padding:14px;border-radius:10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);color:#F87171;font-size:13px;line-height:1.5;";
-      errDiv.innerHTML = '<strong>Sign-in failed:</strong><br/>' + escapeHtml(message) + '<br/><br/><details style="color:#8B8B9A;font-size:12px;"><summary>Setup checklist</summary><ul style="margin-top:8px;padding-left:16px;"><li>1. Firebase Console → Authentication → Sign-in method → Enable Email/Password</li><li>2. Don\'t have an account? Use the "Create one" link below to sign up.</li><li>3. Firebase Console → Authentication → Settings → Authorized domains → Add ' + escapeHtml(window.location.hostname) + '</li><li>4. Firebase Console → Authentication → Sign-in method → Enable Google</li></ul></details>';
+      errDiv.innerHTML = '<strong>Sign-in failed:</strong><br/>' + escapeHtml(message) + '<br/><br/><details style="color:#8B8B9A;font-size:12px;"><summary>Setup checklist</summary><ul style="margin-top:8px;padding-left:16px;"><li>1. Firebase Console → Authentication → Sign-in method → Enable Email/Password</li><li>2. Firebase Console → Authentication → Users → Add User (kayhost@admin.com / 363438)</li><li>3. Firebase Console → Authentication → Settings → Authorized domains → Add ' + escapeHtml(window.location.hostname) + '</li><li>4. Firebase Console → Authentication → Sign-in method → Enable Google</li></ul></details>';
       card.appendChild(errDiv);
       toast(message, "error");
     }
     function escapeHtml(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
+    // Helper: save user profile to Firestore via server API
+    async function saveUserToServer(user) {
+      try {
+        await fetch("/api/save-user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uid: user.uid,
+            email: user.email || "",
+            displayName: user.displayName || "",
+            photoURL: user.photoURL || "",
+            provider: user.providerData?.[0]?.providerId || "google",
+          }),
+        });
+      } catch (e) { console.warn("Couldn't save user profile:", e.message); }
+    }
+
     window.signInWithGoogle = async function() {
       const btn = document.getElementById("google-btn");
       if (btn) { btn.disabled = true; btn.style.opacity = "0.5"; }
       try {
-        await signInWithPopup(auth, new GoogleAuthProvider());
+        const result = await signInWithPopup(auth, new GoogleAuthProvider());
+        await saveUserToServer(result.user);
         document.getElementById("signin-modal").classList.add("hidden");
         toast("Signed in successfully", "success");
       } catch (err) {
@@ -1370,7 +1355,8 @@
       const btn = document.getElementById("github-btn");
       if (btn) { btn.disabled = true; btn.style.opacity = "0.5"; }
       try {
-        await signInWithPopup(auth, new GithubAuthProvider());
+        const result = await signInWithPopup(auth, new GithubAuthProvider());
+        await saveUserToServer(result.user);
         document.getElementById("signin-modal").classList.add("hidden");
         toast("Signed in successfully", "success");
       } catch (err) {
@@ -1439,62 +1425,6 @@
       }
     };
 
-    window.signUpWithEmail = async function() {
-      const name = document.getElementById("signup-name-input").value.trim();
-      const email = document.getElementById("email-input").value.trim();
-      const password = document.getElementById("password-input").value;
-      if (!email || !password) { toast("Enter email and password", "error"); return; }
-      const btn = document.getElementById("email-btn");
-      if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Creating account...'; }
-      try {
-        const res = await fetch("/api/signup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password, displayName: name }),
-        });
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || "Sign-up failed");
-        }
-        const userData = await res.json();
-        localStorage.setItem("kayhost-user", JSON.stringify(userData));
-        currentUser = {
-          uid: userData.uid,
-          email: userData.email,
-          displayName: userData.displayName || "",
-          photoURL: userData.photoURL || "",
-          providerData: [{ providerId: "password" }],
-        };
-        userIsAdmin = ADMIN_EMAILS.includes((userData.email || "").toLowerCase());
-        const authArea = document.getElementById("auth-area");
-        if (authArea) {
-          const initial = (userData.displayName || userData.email || "U").charAt(0).toUpperCase();
-          var avatarHtml = userData.photoURL
-            ? '<img src="' + escapeHtml(userData.photoURL) + '" alt="" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0;" />'
-            : '<span style="width:24px;height:24px;border-radius:50%;background:var(--purple);color:var(--bg);display:grid;place-items:center;font-size:12px;font-weight:700;flex-shrink:0;">' + escapeHtml(initial) + '</span>';
-          var name2 = userData.displayName || userData.email || "User";
-          var adminBtn = userIsAdmin ? '<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;color:var(--purple-text);" onclick="document.getElementById(\'user-menu\').classList.add(\'hidden\');switchView(\'admin\');loadAdminData(\'overview\')">Admin</button>' : '';
-          authArea.innerHTML = '<div style="position:relative;">' +
-            '<button class="theme-toggle" onclick="document.getElementById(\'user-menu\').classList.toggle(\'hidden\')" style="display:flex;align-items:center;gap:6px;padding:4px 8px;">' +
-            avatarHtml +
-            '<span style="font-size:13px;color:var(--fg);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(name2) + '</span>' +
-            '</button>' +
-            '<div id="user-menu" class="hidden" style="position:absolute;right:0;top:40px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:4px;z-index:50;min-width:140px;box-shadow:var(--shadow-lg);">' +
-            '<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;" onclick="document.getElementById(\'user-menu\').classList.add(\'hidden\');switchView(\'sites\')">My Sites</button>' +
-            '<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;" onclick="document.getElementById(\'user-menu\').classList.add(\'hidden\');switchView(\'settings\')">Settings</button>' +
-            adminBtn +
-            '<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;color:var(--red);" onclick="doSignOut()">Sign out</button>' +
-            '</div></div>';
-        }
-        document.getElementById("signin-modal").classList.add("hidden");
-        toast("Account created — signed in", "success");
-      } catch (err) {
-        showAuthErrorInModal(err.message || "Sign-up failed");
-      } finally {
-        if (btn) { btn.disabled = false; btn.textContent = isSignupMode ? "Create account" : "Sign in with email"; }
-      }
-    };
-
     window.doSignOut = async function() {
       localStorage.removeItem("kayhost-user");
       try { await signOut(auth); } catch (e) {}
@@ -1541,19 +1471,17 @@
       if (!content) return;
       content.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
       try {
-        const idToken = await getIdToken();
-        if (!idToken) {
-          content.innerHTML = '<div class="empty-state"><h3>Not authorized</h3><p>Sign in again to access admin.</p></div>';
-          return;
-        }
-        const res = await fetch(`/api/admin?section=${section}`, {
-          headers: { Authorization: `Bearer ${idToken}` },
-        });
-        if (res.status === 403 || res.status === 401) {
+        const uid = currentUser?.uid || "anon";
+        const email = currentUser?.email || "anon";
+        const res = await fetch(`/api/admin?section=${section}&uid=${uid}&email=${encodeURIComponent(email)}`);
+        if (res.status === 403) {
           content.innerHTML = '<div class="empty-state"><h3>Not authorized</h3><p>You need admin access to view this page.</p></div>';
           return;
         }
-        if (!res.ok) throw new Error("Failed to load admin data");
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "Failed to load admin data");
+        }
         const data = await res.json();
 
         if (section === "overview") renderOverview(content, data);
@@ -1561,12 +1489,63 @@
         else if (section === "sites") renderSites(content, data);
         else if (section === "audit") renderAudit(content, data);
         else if (section === "settings") renderAdminSettings(content, data);
-        else content.innerHTML = '<div class="empty-state"><h3>Coming soon</h3><p>This section will be populated with real data.</p></div>';
+        else if (section === "moderation") renderModeration(content, data);
+        else if (section === "health") renderHealth(content, data);
+        else if (section === "templates") renderTemplates(content, data);
+        else content.innerHTML = '<div class="empty-state"><h3>Section: ' + escapeHtml(section) + '</h3><p>This section is not yet built.</p></div>';
       } catch (err) {
-        content.innerHTML = `<div class="empty-state"><h3>Load failed</h3><p>${escapeHtml(err.message)}</p></div>`;
+        content.innerHTML = '<div class="empty-state"><h3>Load failed</h3><p>' + escapeHtml(err.message) + '</p><button class="btn btn-ghost btn-sm" onclick="loadAdminData(\'' + section + '\')" style="margin-top:12px;">Try again</button></div>';
       }
     }
+
+    function renderModeration(content, data) {
+      const flagged = data.flagged || [];
+      const patterns = data.spamPatterns || [];
+      content.innerHTML =
+        '<div class="editor-card" style="margin-bottom:12px;">' +
+        '<h3 style="font-size:15px;margin-bottom:8px;">Spam patterns</h3>' +
+        '<p style="color:var(--fg-secondary);font-size:14px;margin-bottom:8px;">Sites containing these keywords are auto-flagged for review:</p>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;">' + patterns.map(function(p) { return '<span class="ttl-opt" style="cursor:default;">' + escapeHtml(p) + '</span>'; }).join('') + '</div>' +
+        '</div>' +
+        '<div class="editor-card">' +
+        '<h3 style="font-size:15px;margin-bottom:8px;">Flagged content (' + flagged.length + ')</h3>' +
+        (flagged.length === 0 ? '<p style="color:var(--fg-muted);font-size:14px;">No flagged content. All clear.</p>' :
+        '<div class="site-list">' + flagged.map(function(f) { return '<div class="site-item"><div class="thumb">!</div><div class="info"><div class="title">' + escapeHtml(f.title || f.id) + '</div><div class="meta">' + escapeHtml(f.reason || "Auto-flagged") + '</div></div><div class="actions"><button onclick="adminAction(\'deleteSite\',\'' + escapeHtml(f.siteId || f.id) + '\')" style="color:var(--red);">Delete</button><button onclick="adminAction(\'approveFlagged\',\'' + escapeHtml(f.id) + '\')">Approve</button></div></div>'; }).join('') + '</div>') +
+        '</div>';
+    }
+
+    function renderHealth(content, data) {
+      content.innerHTML =
+        '<div class="feature-grid" style="margin-bottom:16px;">' +
+        '<div class="feature-card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg></div><h3 style="font-size:14px;">Status</h3><p>' + escapeHtml(data.status || "ok") + '</p></div>' +
+        '<div class="feature-card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><h3 style="font-size:14px;">Uptime</h3><p>' + escapeHtml(data.uptime || "100%") + '</p></div>' +
+        '<div class="feature-card"><div class="ico yellow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div><h3 style="font-size:14px;">Firebase</h3><p>' + escapeHtml((data.firebaseUsage || {}).reads || "normal") + '</p></div>' +
+        '<div class="feature-card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><h3 style="font-size:14px;">API Errors</h3><p>' + (data.apiErrors || []).length + ' in last 24h</p></div>' +
+        '</div>' +
+        '<div class="editor-card"><h3 style="font-size:15px;margin-bottom:8px;">Last checked</h3><p style="color:var(--fg-secondary);font-size:14px;">' + escapeHtml(data.lastChecked || "just now") + '</p></div>' +
+        '<div class="editor-card"><h3 style="font-size:15px;margin-bottom:8px;">Recent errors</h3>' + ((data.recentErrors || []).length === 0 ? '<p style="color:var(--fg-muted);font-size:14px;">No errors in the last 24 hours.</p>' : '<div class="site-list">' + data.recentErrors.map(function(e) { return '<div class="site-item"><div class="thumb" style="color:var(--red);">!</div><div class="info"><div class="title">' + escapeHtml(e.message || "Error") + '</div><div class="meta">' + escapeHtml(e.time || "") + '</div></div></div>'; }).join('') + '</div>') + '</div>';
+    }
+
+    function renderTemplates(content, data) {
+      const templates = data.templates || [];
+      content.innerHTML =
+        '<div class="editor-card" style="margin-bottom:16px;">' +
+        '<h3 style="font-size:15px;margin-bottom:8px;">Add template</h3>' +
+        '<input class="input" id="tpl-name" placeholder="Template name" style="margin-bottom:8px;" />' +
+        '<textarea class="textarea" id="tpl-html" placeholder="Paste HTML..." style="min-height:120px;margin-bottom:8px;"></textarea>' +
+        '<button class="btn btn-purple btn-sm" onclick="addTemplateFromAdmin()">Save template</button>' +
+        '</div>' +
+        '<div class="editor-card">' +
+        '<h3 style="font-size:15px;margin-bottom:8px;">Templates (' + templates.length + ')</h3>' +
+        (templates.length === 0 ? '<p style="color:var(--fg-muted);font-size:14px;">No templates yet. Add one above.</p>' :
+        '<div class="site-list">' + templates.map(function(t) {
+          return '<div class="site-item"><div class="thumb">T</div><div class="info"><div class="title">' + escapeHtml(t.name || "Untitled") + '</div><div class="meta">Added ' + (t.createdAt ? new Date(t.createdAt).toLocaleDateString() : "") + '</div></div><div class="actions"><button onclick="adminAction(\'deleteTemplate\',\'' + escapeHtml(t.id) + '\')" style="color:var(--red);">delete</button></div></div>';
+        }).join('') + '</div>') +
+        '</div>';
+    }
     window.loadAdminData = loadAdminData;
+
+    function escapeHtml(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
     function renderOverview(content, data) {
       const s = data.sites || {};
@@ -1592,27 +1571,42 @@
 
     function renderUsers(content, data) {
       const users = data.users || [];
-      if (!users.length) { content.innerHTML = '<div class="empty-state"><h3>No users yet</h3></div>'; return; }
-      content.innerHTML = `<div class="table-wrap" style="overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);">
-        <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:500px;">
-          <thead><tr style="border-bottom:1px solid var(--border);">
-            <th style="padding:10px;text-align:left;font-weight:600;">User</th>
-            <th style="padding:10px;text-align:left;font-weight:600;">Provider</th>
-            <th style="padding:10px;text-align:left;font-weight:600;">Joined</th>
-            <th style="padding:10px;text-align:left;font-weight:600;">Actions</th>
-          </tr></thead>
-          <tbody>
-            ${users.map(u => `<tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:10px;"><div style="display:flex;align-items:center;gap:8px;">${u.photoURL ? `<img src="${escapeHtml(u.photoURL)}" style="width:24px;height:24px;border-radius:50%;" alt="" />` : ""}<div><div style="font-weight:500;">${escapeHtml(u.displayName || u.email || "Unknown")}</div><div style="font-size:11px;color:var(--fg-muted);">${escapeHtml(u.email || "")}</div></div></div></td>
-              <td style="padding:10px;color:var(--fg-secondary);">${escapeHtml((u.provider || "unknown").replace("firebase",""))}</td>
-              <td style="padding:10px;color:var(--fg-secondary);">${u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}</td>
-              <td style="padding:10px;">
-                <button class="btn btn-ghost btn-sm" onclick="adminAction('promoteAdmin','${escapeHtml(u.uid)}','${escapeHtml(u.email || "")}')" style="color:var(--purple-text);">Make admin</button>
-              </td>
-            </tr>`).join("")}
-          </tbody>
-        </table>
-      </div>`;
+      if (!users.length) { content.innerHTML = '<div class="empty-state"><h3>No users yet</h3><p>When users sign in with Google, GitHub, or email, they\'ll appear here.</p></div>'; return; }
+      content.innerHTML = '<div class="table-wrap" style="overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);">' +
+        '<table style="width:100%;border-collapse:collapse;font-size:13px;min-width:600px;">' +
+        '<thead><tr style="border-bottom:1px solid var(--border);">' +
+        '<th style="padding:10px;text-align:left;font-weight:600;">User</th>' +
+        '<th style="padding:10px;text-align:left;font-weight:600;">Provider</th>' +
+        '<th style="padding:10px;text-align:left;font-weight:600;">Plan</th>' +
+        '<th style="padding:10px;text-align:left;font-weight:600;">Joined</th>' +
+        '<th style="padding:10px;text-align:left;font-weight:600;">Status</th>' +
+        '<th style="padding:10px;text-align:left;font-weight:600;">Actions</th>' +
+        '</tr></thead><tbody>' +
+        users.map(function(u) {
+          var avatar = u.photoURL ? '<img src="' + escapeHtml(u.photoURL) + '" style="width:24px;height:24px;border-radius:50%;" alt="" />' : '';
+          var name = escapeHtml(u.displayName || u.email || "Unknown");
+          var email = escapeHtml(u.email || "");
+          var provider = escapeHtml((u.provider || "unknown").replace("firebase","").replace(".com",""));
+          var joined = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—';
+          var plan = u.pro ? '<span style="color:var(--yellow-text);font-weight:600;">Pro</span>' : '<span style="color:var(--fg-muted);">Free</span>';
+          var status = u.suspended ? '<span style="color:var(--red);">Suspended</span>' : '<span style="color:var(--purple-text);">Active</span>';
+          var suspendBtn = u.suspended
+            ? '<button class="btn btn-ghost btn-sm" onclick="adminAction(\'suspendUser\',\'' + escapeHtml(u.uid) + '\',\'false\')" style="color:var(--purple-text);font-size:11px;">Unsuspend</button>'
+            : '<button class="btn btn-ghost btn-sm" onclick="adminAction(\'suspendUser\',\'' + escapeHtml(u.uid) + '\',\'true\')" style="color:var(--red);font-size:11px;">Suspend</button>';
+          var proBtn = u.pro
+            ? '<button class="btn btn-ghost btn-sm" onclick="adminAction(\'setPro\',\'' + escapeHtml(u.uid) + '\',\'false\')" style="font-size:11px;">Remove Pro</button>'
+            : '<button class="btn btn-ghost btn-sm" onclick="adminAction(\'setPro\',\'' + escapeHtml(u.uid) + '\',\'true\')" style="color:var(--yellow-text);font-size:11px;">Make Pro</button>';
+          var adminBtn = '<button class="btn btn-ghost btn-sm" onclick="adminAction(\'promoteAdmin\',\'' + escapeHtml(u.uid) + '\',\'' + escapeHtml(u.email || "") + '\')" style="color:var(--purple-text);font-size:11px;">Make admin</button>';
+          return '<tr style="border-bottom:1px solid var(--border);">' +
+            '<td style="padding:10px;"><div style="display:flex;align-items:center;gap:8px;">' + avatar + '<div><div style="font-weight:500;">' + name + '</div><div style="font-size:11px;color:var(--fg-muted);">' + email + '</div></div></div></td>' +
+            '<td style="padding:10px;color:var(--fg-secondary);">' + provider + '</td>' +
+            '<td style="padding:10px;">' + plan + '</td>' +
+            '<td style="padding:10px;color:var(--fg-secondary);">' + joined + '</td>' +
+            '<td style="padding:10px;">' + status + '</td>' +
+            '<td style="padding:10px;display:flex;gap:4px;flex-wrap:wrap;">' + suspendBtn + proBtn + adminBtn + '</td>' +
+            '</tr>';
+        }).join('') +
+        '</tbody></table></div>';
     }
 
     function renderSites(content, data) {
@@ -1669,31 +1663,45 @@
     }
 
     window.adminAction = async function(action, targetId, adminEmail) {
-      if (!confirm(`${action} on ${targetId}?`)) return;
+      if (action !== "addTemplate" && !confirm(action + " on " + targetId + "?")) return;
       try {
-        const idToken = await getIdToken();
-        if (!idToken) { toast("Sign in again to continue", "error"); return; }
+        const body = { action, targetId, adminEmail, uid: currentUser?.uid, email: currentUser?.email };
+        if (action === "suspendUser" || action === "setPro") body.newStatus = arguments[2] || "";
         const res = await fetch("/api/admin", {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-          body: JSON.stringify({ action, targetId, adminEmail }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
         });
         if (!res.ok) throw new Error("Action failed");
         toast("Action completed", "success");
         // Reload current tab
         const activeTab = document.querySelector("#admin-tabs .active");
-        if (activeTab) loadAdminData(activeTab.textContent.toLowerCase().replace(" ", ""));
+        if (activeTab) loadAdminData(activeTab.textContent.toLowerCase().replace(" ", "").replace("auditlog", "audit"));
+      } catch (err) { toast(err.message, "error"); }
+    };
+
+    window.addTemplateFromAdmin = async function() {
+      const name = document.getElementById("tpl-name")?.value.trim() || "Untitled";
+      const html = document.getElementById("tpl-html")?.value || "";
+      if (!html) { toast("Paste some HTML first", "error"); return; }
+      try {
+        const res = await fetch("/api/admin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "addTemplate", templateName: name, templateHtml: html, uid: currentUser?.uid, email: currentUser?.email }),
+        });
+        if (!res.ok) throw new Error("Save failed");
+        toast("Template saved!", "success");
+        loadAdminData("templates");
       } catch (err) { toast(err.message, "error"); }
     };
 
     window.updateSetting = async function(key, value) {
       try {
-        const idToken = await getIdToken();
-        if (!idToken) { toast("Sign in again to continue", "error"); return; }
         await fetch("/api/admin", {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-          body: JSON.stringify({ action: "updateSettings", settings: { [key]: value } }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "updateSettings", settings: { [key]: value }, uid: currentUser?.uid, email: currentUser?.email }),
         });
         toast("Setting updated", "success");
       } catch (err) { toast(err.message, "error"); }
