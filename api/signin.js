@@ -1,13 +1,8 @@
 // /api/signin.js — Server-side email/password sign-in via Firebase REST API.
-// This BYPASSES reCAPTCHA (which the Firebase SDK v10 uses by default and which
-// fails on custom domains). The browser sends email+password here, the server
-// calls Firebase directly, returns the user token + profile.
+// Bypasses reCAPTCHA. Clean error messages for end users (no debug info).
 const { getDb } = require("./_firebase");
-const { doc, setDoc, getDoc } = require("firebase/firestore");
+const { doc, setDoc, getDoc, query, where, getDocs, collection } = require("firebase/firestore");
 
-// Firebase web API key — this is the public client config, safe to hardcode
-// (see the note in api/_firebase.js). Not the same as your Gemini key or
-// Firebase service account key — those stay in env vars only.
 const FIREBASE_API_KEY = "AIzaSyB7BBI11ZGrKJ3P24RF9ja49FWHeX3kImQ";
 
 module.exports = async (req, res) => {
@@ -40,39 +35,43 @@ module.exports = async (req, res) => {
     const data = await response.json();
 
     if (!response.ok) {
-      // Translate Firebase REST API errors to clean messages
+      // Clean error messages — NO Firebase Console instructions shown to users
       const error = data.error || {};
       const code = error.message || "Sign-in failed";
-      let msg = code;
+      let msg = "Connection error. Please try again.";
       if (code.includes("INVALID_PASSWORD") || code.includes("INVALID_LOGIN_CREDENTIALS")) {
-        msg = "Wrong email or password. Check that the account exists in Firebase Console → Authentication → Users.";
+        msg = "Invalid email or password.";
       } else if (code.includes("EMAIL_NOT_FOUND")) {
-        msg = "No account found with that email. Create it in Firebase Console → Authentication → Users → Add User.";
+        msg = "Invalid email or password.";
       } else if (code.includes("TOO_MANY_ATTEMPTS")) {
-        msg = "Too many failed attempts. Wait 5 minutes and try again.";
-      } else if (code.includes("OPERATION_NOT_ALLOWED")) {
-        msg = "Email/Password sign-in is not enabled. Go to Firebase Console → Authentication → Sign-in method → Enable Email/Password.";
-      } else if (code.includes("API_KEY_NOT_VALID")) {
-        msg = "Firebase API key is not valid. Check the API key in api/signin.js.";
-      } else if (code.includes("NETWORK_ERROR")) {
-        msg = "Can't reach Firebase. Check your Firebase project settings.";
+        msg = "Too many attempts. Please wait a few minutes and try again.";
       }
-      return res.status(400).json({ error: msg, code });
+      return res.status(400).json({ error: msg });
     }
 
-    // Success! Save user profile to Firestore if not already there
+    // Success! Save user profile to Firestore — prevent duplicates by checking email
     try {
       const db = getDb();
-      const userDoc = await getDoc(doc(db, "users", data.localId));
+      const userRef = doc(db, "users", data.localId);
+      const userDoc = await getDoc(userRef);
       if (!userDoc.exists()) {
-        await setDoc(doc(db, "users", data.localId), {
-          uid: data.localId,
-          email: data.email,
-          displayName: data.displayName || data.email,
-          photoURL: data.photoUrl || "",
-          provider: "password",
-          createdAt: Date.now(),
-        });
+        // Check if a user with the same email already exists (different UID, same email)
+        const emailQuery = query(collection(db, "users"), where("email", "==", data.email));
+        const emailSnap = await getDocs(emailQuery);
+        if (emailSnap.empty) {
+          // No existing user with this email — create new
+          await setDoc(userRef, {
+            uid: data.localId,
+            email: data.email,
+            displayName: data.displayName || data.email,
+            photoURL: data.photoUrl || "",
+            provider: "password",
+            createdAt: Date.now(),
+            pro: false,
+            suspended: false,
+          });
+        }
+        // If a user with this email already exists, skip creating a duplicate
       }
     } catch (e) {
       // Firestore might not be set up — ignore, sign-in still works
@@ -90,6 +89,6 @@ module.exports = async (req, res) => {
     });
   } catch (err) {
     console.error("[signin] Error:", err);
-    return res.status(500).json({ error: err.message || "Sign-in failed" });
+    return res.status(500).json({ error: "Connection error. Please try again." });
   }
 };
