@@ -1,14 +1,9 @@
 // /api/ai-edit.js — receives { html, selector, instruction }, calls Gemini to rewrite HTML.
-// Server-side only — API key never exposed to browser.
-//
-// Requires GEMINI_API_KEY as a Vercel environment variable. Get a real key
-// from https://aistudio.google.com/apikey — valid keys start with "AIzaSy".
-// No hardcoded fallback — a missing/malformed key must fail loudly, not
-// silently attempt a request that will always 400.
+// Uses the new @google/genai SDK (replaces old @google/generative-ai).
+// Accepts AQ.-format keys (new Google format) — no prefix validation.
+const { GoogleGenAI } = require("@google/genai");
 
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "AQ.Ab8RN6LjZ6Jn2oiBrQj6GkkOzjJk31FqW1kZda3PkFNXjpMF8Q";
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -24,15 +19,14 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: "html and instruction are required" });
     }
 
-    // Check if the key is present and looks like a real Gemini key
-    if (!GEMINI_API_KEY || !GEMINI_API_KEY.startsWith("AIzaSy")) {
+    // Only check that the key exists — don't validate prefix format
+    if (!GEMINI_API_KEY || GEMINI_API_KEY.length < 10) {
       return res.status(500).json({
-        error: "GEMINI_API_KEY is missing or malformed. Get a free key from https://aistudio.google.com/apikey (it should start with 'AIzaSy') and set it in Vercel → Settings → Environment Variables."
+        error: "Gemini API key not configured. Set GEMINI_API_KEY in Vercel env vars or hardcode it in api/ai-edit.js."
       });
     }
 
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
     const prompt = `You are an HTML editor. The user has an HTML document and wants to change a specific part of it.
 
@@ -55,9 +49,12 @@ IMPORTANT INSTRUCTIONS:
 
 Return ONLY the raw HTML:`;
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    let updatedHtml = response.text();
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+    });
+
+    let updatedHtml = response.text;
 
     // Clean up: remove markdown code fences if Gemini added them
     updatedHtml = updatedHtml.trim();
@@ -76,10 +73,10 @@ Return ONLY the raw HTML:`;
     return res.status(200).json({ html: updatedHtml });
   } catch (err) {
     console.error("[ai-edit] Error:", err);
-    // Return a clean, user-facing error
     let msg = err.message || "AI edit failed";
-    if (msg.includes("API key not valid")) {
-      msg = "Gemini API key is invalid. Get a free key from https://aistudio.google.com/apikey";
+    // Auth-related errors — tell user to check their key, not that the format is wrong
+    if (msg.includes("401") || msg.includes("API key not valid") || msg.includes("UNAUTHENTICATED") || msg.includes("permission_denied")) {
+      msg = "Gemini API key authentication failed. Double-check that GEMINI_API_KEY in Vercel exactly matches what's shown in Google AI Studio — no extra spaces or truncation.";
     }
     return res.status(500).json({ error: msg });
   }
