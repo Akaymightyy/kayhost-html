@@ -62,9 +62,36 @@ module.exports = async (req, res) => {
 
       if (section === "users") {
         const usersSnap = await getDocs(collection(db, "users"));
+        const raw = [];
+        usersSnap.forEach(d => raw.push({ uid: d.id, ...d.data() }));
+
+        // DEDUPE by email — group docs with same email, keep oldest as canonical,
+        // merge pro/suspended flags from the others into it.
+        const byEmail = new Map();
+        const noEmail = [];
+        for (const u of raw) {
+          const key = (u.email || "").trim().toLowerCase();
+          if (!key) { noEmail.push(u); continue; }
+          if (!byEmail.has(key)) byEmail.set(key, []);
+          byEmail.get(key).push(u);
+        }
         const users = [];
-        usersSnap.forEach(d => users.push({ uid: d.id, ...d.data() }));
-        return res.status(200).json({ users });
+        for (const [email, group] of byEmail) {
+          group.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+          const canonical = group[0];
+          const merged = {
+            ...canonical,
+            pro: group.some(g => g.pro) || canonical.pro || false,
+            suspended: group.some(g => g.suspended) || canonical.suspended || false,
+            _duplicateCount: group.length,
+            _duplicateUids: group.map(g => g.uid),
+          };
+          users.push(merged);
+        }
+        users.push(...noEmail);
+        // Newest first
+        users.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        return res.status(200).json({ users, rawCount: raw.length });
       }
 
       if (section === "sites") {
@@ -131,7 +158,17 @@ module.exports = async (req, res) => {
 
     // ===== POST: Admin actions =====
     if (req.method === "POST") {
-      const { action, targetId, targetType, newTtl, newStatus, adminEmail, templateHtml, templateName } = req.body || {};
+      const { action, targetId, targetType, newTtl, newStatus, adminEmail, templateHtml, templateName, duplicateUids } = req.body || {};
+
+      // Helper: returns the list of UIDs an action should apply to.
+      // If the client sent `duplicateUids` (a merged row), apply to all of them;
+      // otherwise just use the single targetId.
+      const expandTargets = () => {
+        const all = Array.isArray(duplicateUids) && duplicateUids.length
+          ? [...new Set([...duplicateUids, targetId].filter(Boolean))]
+          : [targetId];
+        return all;
+      };
 
       // Log the action
       try {
@@ -156,18 +193,30 @@ module.exports = async (req, res) => {
       }
 
       if (action === "suspendUser") {
-        await updateDoc(doc(db, "users", targetId), { suspended: newStatus === "true", suspendedAt: Date.now() });
-        return res.status(200).json({ success: true });
+        const targets = expandTargets();
+        for (const uid of targets) {
+          try { await updateDoc(doc(db, "users", uid), { suspended: newStatus === "true", suspendedAt: Date.now() }); }
+          catch (e) { /* skip missing docs */ }
+        }
+        return res.status(200).json({ success: true, appliedTo: targets.length });
       }
 
       if (action === "setPro") {
-        await updateDoc(doc(db, "users", targetId), { pro: newStatus === "true", proSetAt: Date.now() });
-        return res.status(200).json({ success: true });
+        const targets = expandTargets();
+        for (const uid of targets) {
+          try { await updateDoc(doc(db, "users", uid), { pro: newStatus === "true", proSetAt: Date.now() }); }
+          catch (e) { /* skip missing docs */ }
+        }
+        return res.status(200).json({ success: true, appliedTo: targets.length });
       }
 
       if (action === "promoteAdmin") {
-        await setDoc(doc(db, "admins", targetId), { email: adminEmail || "", addedBy: email, addedAt: Date.now() });
-        return res.status(200).json({ success: true });
+        const targets = expandTargets();
+        for (const uid of targets) {
+          try { await setDoc(doc(db, "admins", uid), { email: adminEmail || "", addedBy: email, addedAt: Date.now() }); }
+          catch (e) {}
+        }
+        return res.status(200).json({ success: true, appliedTo: targets.length });
       }
 
       if (action === "demoteAdmin") {
