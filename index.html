@@ -1577,8 +1577,16 @@
       content.innerHTML =
         '<div class="editor-card" style="margin-bottom:16px;">' +
         '<h3 style="font-size:15px;margin-bottom:8px;">Add template</h3>' +
-        '<input class="input" id="tpl-name" placeholder="Template name" style="margin-bottom:8px;" />' +
-        '<textarea class="textarea" id="tpl-html" placeholder="Paste HTML..." style="min-height:120px;margin-bottom:8px;"></textarea>' +
+        '<input class="input" id="tpl-name" placeholder="Template name (auto-fills from file name if empty)" style="margin-bottom:8px;" />' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">' +
+          '<label class="btn btn-ghost btn-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' +
+            'Upload .html file' +
+            '<input type="file" accept=".html,.htm,text/html" id="tpl-file" style="display:none;" onchange="window.uploadTemplateFile(event)" />' +
+          '</label>' +
+          '<span id="tpl-file-status" style="font-size:12px;color:var(--fg-muted);">or paste HTML below</span>' +
+        '</div>' +
+        '<textarea class="textarea" id="tpl-html" placeholder="Paste HTML or upload a .html file above..." style="min-height:120px;margin-bottom:8px;"></textarea>' +
         '<button class="btn btn-purple btn-sm" onclick="addTemplateFromAdmin()">Save template</button>' +
         '</div>' +
         '<div class="editor-card">' +
@@ -1589,6 +1597,44 @@
         }).join('') + '</div>') +
         '</div>';
     }
+
+    // FileReader-based HTML upload for admin Templates — reads the selected file
+    // and fills the textarea (and name input if empty).
+    window.uploadTemplateFile = function(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      const status = document.getElementById("tpl-file-status");
+      if (status) { status.textContent = "Reading " + file.name + "..."; status.style.color = "var(--fg-secondary)"; }
+      // 5MB sanity cap — templates shouldn't be huge
+      if (file.size > 5 * 1024 * 1024) {
+        if (status) { status.textContent = "File too large (max 5MB). Paste instead."; status.style.color = "var(--red)"; }
+        event.target.value = "";
+        toast("File too large (max 5MB)", "error");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const text = String(e.target.result || "");
+        const ta = document.getElementById("tpl-html");
+        if (ta) ta.value = text;
+        // Auto-fill name from filename if empty
+        const nameInput = document.getElementById("tpl-name");
+        if (nameInput && !nameInput.value.trim()) {
+          const base = file.name.replace(/\.(html?|htm)$/i, "").replace(/[_-]+/g, " ").trim();
+          nameInput.value = base.charAt(0).toUpperCase() + base.slice(1);
+        }
+        if (status) {
+          status.textContent = "Loaded " + file.name + " (" + (text.length / 1024).toFixed(1) + " KB)";
+          status.style.color = "var(--purple-text)";
+        }
+        toast("HTML loaded — review and click Save template", "success");
+      };
+      reader.onerror = function() {
+        if (status) { status.textContent = "Couldn't read file. Paste HTML instead."; status.style.color = "var(--red)"; }
+        toast("Couldn't read file", "error");
+      };
+      reader.readAsText(file);
+    };
     window.loadAdminData = loadAdminData;
 
     // escapeHtml is defined at line 1325 — do NOT redeclare here (ESM strict mode error)
@@ -1636,15 +1682,21 @@
           var joined = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—';
           var plan = u.pro ? '<span style="color:var(--yellow-text);font-weight:600;">Pro</span>' : '<span style="color:var(--fg-muted);">Free</span>';
           var status = u.suspended ? '<span style="color:var(--red);">Suspended</span>' : '<span style="color:var(--purple-text);">Active</span>';
+          // Build a JS-array-literal string for passing duplicateUids into the inline onclick handler.
+          // Use single quotes (not double) so it doesn't terminate the outer onclick="..." attribute.
+          // Firebase Auth UIDs are alphanumeric only, so no quote-escaping needed.
+          var duIds = (u._duplicateUids && u._duplicateUids.length > 1) ? u._duplicateUids : null;
+          var duAttr = duIds ? ", [" + duIds.map(function(x){ return "'" + String(x).replace(/'/g, "") + "'"; }).join(",") + "]" : '';
+          var mergeBadge = duIds ? ' <span style="font-size:10px;color:var(--yellow-text);background:rgba(234,179,8,0.12);padding:1px 6px;border-radius:8px;margin-left:6px;">' + duIds.length + ' merged</span>' : '';
           var suspendBtn = u.suspended
-            ? '<button class="btn btn-ghost btn-sm" onclick="adminAction(\'suspendUser\',\'' + escapeHtml(u.uid) + '\',\'false\')" style="color:var(--purple-text);font-size:11px;">Unsuspend</button>'
-            : '<button class="btn btn-ghost btn-sm" onclick="adminAction(\'suspendUser\',\'' + escapeHtml(u.uid) + '\',\'true\')" style="color:var(--red);font-size:11px;">Suspend</button>';
+            ? '<button class="btn btn-ghost btn-sm" onclick="adminAction(\'suspendUser\',\'' + escapeHtml(u.uid) + '\',\'false\'' + duAttr + ')" style="color:var(--purple-text);font-size:11px;">Unsuspend</button>'
+            : '<button class="btn btn-ghost btn-sm" onclick="adminAction(\'suspendUser\',\'' + escapeHtml(u.uid) + '\',\'true\'' + duAttr + ')" style="color:var(--red);font-size:11px;">Suspend</button>';
           var proBtn = u.pro
-            ? '<button class="btn btn-ghost btn-sm" onclick="adminAction(\'setPro\',\'' + escapeHtml(u.uid) + '\',\'false\')" style="font-size:11px;">Remove Pro</button>'
-            : '<button class="btn btn-ghost btn-sm" onclick="adminAction(\'setPro\',\'' + escapeHtml(u.uid) + '\',\'true\')" style="color:var(--yellow-text);font-size:11px;">Make Pro</button>';
-          var adminBtn = '<button class="btn btn-ghost btn-sm" onclick="adminAction(\'promoteAdmin\',\'' + escapeHtml(u.uid) + '\',\'' + escapeHtml(u.email || "") + '\')" style="color:var(--purple-text);font-size:11px;">Make admin</button>';
+            ? '<button class="btn btn-ghost btn-sm" onclick="adminAction(\'setPro\',\'' + escapeHtml(u.uid) + '\',\'false\'' + duAttr + ')" style="font-size:11px;">Remove Pro</button>'
+            : '<button class="btn btn-ghost btn-sm" onclick="adminAction(\'setPro\',\'' + escapeHtml(u.uid) + '\',\'true\'' + duAttr + ')" style="color:var(--yellow-text);font-size:11px;">Make Pro</button>';
+          var adminBtn = '<button class="btn btn-ghost btn-sm" onclick="adminAction(\'promoteAdmin\',\'' + escapeHtml(u.uid) + '\',\'' + escapeHtml(u.email || "") + '\'' + duAttr + ')" style="color:var(--purple-text);font-size:11px;">Make admin</button>';
           return '<tr style="border-bottom:1px solid var(--border);">' +
-            '<td style="padding:10px;"><div style="display:flex;align-items:center;gap:8px;">' + avatar + '<div><div style="font-weight:500;">' + name + '</div><div style="font-size:11px;color:var(--fg-muted);">' + email + '</div></div></div></td>' +
+            '<td style="padding:10px;"><div style="display:flex;align-items:center;gap:8px;">' + avatar + '<div><div style="font-weight:500;">' + name + mergeBadge + '</div><div style="font-size:11px;color:var(--fg-muted);">' + email + '</div></div></div></td>' +
             '<td style="padding:10px;color:var(--fg-secondary);">' + provider + '</td>' +
             '<td style="padding:10px;">' + plan + '</td>' +
             '<td style="padding:10px;color:var(--fg-secondary);">' + joined + '</td>' +
@@ -1691,6 +1743,8 @@
 
     function renderAdminSettings(content, data) {
       const settings = data.settings || {};
+      const chatWidgetCode = (settings.chatWidget && typeof settings.chatWidget.value === "string") ? settings.chatWidget.value : "";
+      const escapedPreview = chatWidgetCode ? chatWidgetCode.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : "";
       content.innerHTML = `
         <div class="editor-card" style="margin-bottom:12px;">
           <h3 style="font-size:15px;margin-bottom:12px;">Feature Flags</h3>
@@ -1700,6 +1754,16 @@
             <label style="display:flex;align-items:center;gap:8px;font-size:14px;"><input type="checkbox" ${settings.maintenanceMode?.value === true ? "checked" : ""} onchange="updateSetting('maintenanceMode', this.checked)" /> Maintenance mode</label>
           </div>
         </div>
+        <div class="editor-card" style="margin-bottom:12px;">
+          <h3 style="font-size:15px;margin-bottom:6px;">Chat Widget (Tawk.to / Crisp / Intercom)</h3>
+          <p style="color:var(--fg-secondary);font-size:13px;margin-bottom:10px;line-height:1.5;">Paste the full embed code from your chat provider. It will be injected before <code style="background:var(--bg-elevated);padding:1px 4px;border-radius:3px;font-size:12px;">&lt;/body&gt;</code> on every page. To get your Tawk.to code, go to <strong>dashboard.tawk.to → Admin → Channels → [your property] → Code</strong> and copy the entire snippet.</p>
+          <textarea class="textarea" id="chat-widget-code" placeholder="&lt;!--Start of Tawk.to Script--&gt;&#10;&lt;script type=&quot;text/javascript&quot;&gt;&#10;var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();&#10;(function(){&#10;var s1=document.createElement(&quot;script&quot;),s0=document.getElementsByTagName(&quot;script&quot;)[0];&#10;s1.async=true;&#10;s1.src='https://embed.tawk.to/YOUR_PROPERTY_ID/default';&#10;s1.charset='UTF-8';&#10;s1.setAttribute('crossorigin','*');&#10;s0.parentNode.insertBefore(s1,s0);&#10;})();&#10;&lt;/script&gt;&#10;&lt;!--End of Tawk.to Script--&gt;" style="min-height:160px;font-family:monospace;font-size:12px;margin-bottom:8px;">${escapedPreview}</textarea>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-purple btn-sm" onclick="saveChatWidget()">Save widget code</button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="clearChatWidget()">Clear</button>
+          </div>
+          <p id="chat-widget-status" style="font-size:12px;color:var(--fg-muted);margin-top:8px;">${chatWidgetCode ? "Widget is live on the site." : "No chat widget configured yet."}</p>
+        </div>
         <div class="editor-card">
           <h3 style="font-size:15px;margin-bottom:12px;">Admin Accounts</h3>
           <p style="color:var(--fg-secondary);font-size:14px;margin-bottom:8px;">Admins are managed via the Users tab — click "Make admin" on any user to promote them.</p>
@@ -1708,18 +1772,70 @@
       `;
     }
 
-    window.adminAction = async function(action, targetId, adminEmail) {
-      if (action !== "addTemplate" && !confirm(action + " on " + targetId + "?")) return;
+    // Save the chat-widget embed code (string value, not boolean)
+    window.saveChatWidget = async function() {
+      const code = document.getElementById("chat-widget-code")?.value || "";
+      // Light sanitization: strip <script> tags that contain "Tawk_API" silently — actually no,
+      // we WANT to keep script tags since that's the whole point. Just trim whitespace.
+      const trimmed = code.trim();
       try {
-        const body = { action, targetId, adminEmail, uid: currentUser?.uid, email: currentUser?.email };
-        if (action === "suspendUser" || action === "setPro") body.newStatus = arguments[2] || "";
+        const res = await fetch("/api/admin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "updateSettings",
+            settings: { chatWidget: trimmed },
+            uid: currentUser?.uid, email: currentUser?.email,
+          }),
+        });
+        if (!res.ok) throw new Error("Save failed");
+        toast("Chat widget saved — visible on next page load", "success");
+        const status = document.getElementById("chat-widget-status");
+        if (status) { status.textContent = "Widget is live on the site."; status.style.color = "var(--purple-text)"; }
+      } catch (err) { toast(err.message, "error"); }
+    };
+
+    // Clear the chat-widget embed code
+    window.clearChatWidget = async function() {
+      if (!confirm("Remove the chat widget? Visitors will no longer see it.")) return;
+      const ta = document.getElementById("chat-widget-code");
+      if (ta) ta.value = "";
+      try {
+        await fetch("/api/admin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "updateSettings",
+            settings: { chatWidget: "" },
+            uid: currentUser?.uid, email: currentUser?.email,
+          }),
+        });
+        toast("Chat widget cleared", "info");
+        const status = document.getElementById("chat-widget-status");
+        if (status) { status.textContent = "No chat widget configured yet."; status.style.color = "var(--fg-muted)"; }
+      } catch (err) { toast(err.message, "error"); }
+    };
+
+    // adminAction(action, targetId, arg3, duplicateUids) — arg3 is newStatus (suspend/setPro) or adminEmail (promoteAdmin)
+    window.adminAction = async function(action, targetId, arg3, duplicateUids) {
+      if (action !== "addTemplate" && !confirm(action + " on " + (arg3 || targetId) + "?")) return;
+      try {
+        const body = { action, targetId, uid: currentUser?.uid, email: currentUser?.email };
+        if (action === "suspendUser" || action === "setPro") {
+          body.newStatus = arg3 || "";
+          if (Array.isArray(duplicateUids) && duplicateUids.length) body.duplicateUids = duplicateUids;
+        } else if (action === "promoteAdmin") {
+          body.adminEmail = arg3 || "";
+          if (Array.isArray(duplicateUids) && duplicateUids.length) body.duplicateUids = duplicateUids;
+        }
         const res = await fetch("/api/admin", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
         if (!res.ok) throw new Error("Action failed");
-        toast("Action completed", "success");
+        const result = await res.json().catch(() => ({}));
+        toast("Action completed" + (result.appliedTo ? " (applied to " + result.appliedTo + " account" + (result.appliedTo === 1 ? "" : "s") + ")" : ""), "success");
         // Reload current tab
         const activeTab = document.querySelector("#admin-tabs .active");
         if (activeTab) loadAdminData(activeTab.textContent.toLowerCase().replace(" ", "").replace("auditlog", "audit"));
@@ -1752,6 +1868,45 @@
         toast("Setting updated", "success");
       } catch (err) { toast(err.message, "error"); }
     };
+  </script>
+
+  <!-- Chat widget auto-loader: fetches embed code from /api/settings and injects it.
+       Setting innerHTML alone does NOT execute <script> tags, so we recreate them. -->
+  <script>
+    (function() {
+      function injectEmbedCode(code) {
+        if (!code || !String(code).trim()) return;
+        try {
+          var holder = document.createElement('div');
+          holder.style.display = 'none';
+          holder.innerHTML = String(code);
+          // Re-create every <script> so the browser actually executes it.
+          // (innerHTML-inserted scripts are skipped by design.)
+          var scripts = holder.querySelectorAll('script');
+          scripts.forEach(function(oldScript) {
+            var newScript = document.createElement('script');
+            for (var i = 0; i < oldScript.attributes.length; i++) {
+              var a = oldScript.attributes[i];
+              newScript.setAttribute(a.name, a.value);
+            }
+            newScript.textContent = oldScript.textContent;
+            oldScript.parentNode.replaceChild(newScript, oldScript);
+          });
+          // Make holder visible so any non-script elements (e.g. <div> targets) are in the DOM
+          holder.style.display = '';
+          document.body.appendChild(holder);
+        } catch (e) {
+          console.warn('Chat widget injection failed:', e);
+        }
+      }
+      // Fetch the public settings + inject chatWidget code if present
+      fetch('/api/settings', { cache: 'no-store' })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+          if (data && data.chatWidget) injectEmbedCode(data.chatWidget);
+        })
+        .catch(function() { /* silent — no widget, no problem */ });
+    })();
   </script>
 </body>
 </html>
