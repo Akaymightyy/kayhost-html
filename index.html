@@ -123,15 +123,24 @@
     /* ===== Hero ===== */
     .hero { text-align: center; padding: 60px 0 32px; }
     .hero h1 { font-size: clamp(32px, 7vw, 52px); font-weight: 700; letter-spacing: -0.03em; }
-    .hero h1 .secondary { color: var(--fg-secondary); position: relative; }
+    .hero h1 .secondary { color: #ffffff; position: relative; display: inline-block; padding: 2px 12px; }
     .hero h1 .secondary::after {
-      content: ''; position: absolute; inset: -4px -8px; border-radius: 8px;
-      background: linear-gradient(135deg, rgba(167,139,250,0.15), rgba(167,139,250,0.05));
-      z-index: -1; animation: purplePulse 3s ease-in-out infinite;
+      content: ''; position: absolute; inset: 0; border-radius: 8px;
+      background: rgba(139, 92, 246, 0.35);
+      z-index: -1;
+      animation: purpleShake 4s ease-in-out infinite;
     }
-    @keyframes purplePulse {
-      0%, 100% { transform: translateX(-4px); opacity: 0.6; }
-      50% { transform: translateX(4px); opacity: 1; }
+    @keyframes purpleShake {
+      0%, 100% { transform: translateX(0) translateY(0); }
+      10% { transform: translateX(-2px) translateY(1px); }
+      20% { transform: translateX(2px) translateY(-1px); }
+      30% { transform: translateX(-1px) translateY(2px); }
+      40% { transform: translateX(1px) translateY(-2px); }
+      50% { transform: translateX(-2px) translateY(1px); }
+      60% { transform: translateX(2px) translateY(-1px); }
+      70% { transform: translateX(-1px) translateY(2px); }
+      80% { transform: translateX(1px) translateY(-2px); }
+      90% { transform: translateX(-2px) translateY(1px); }
     }
     @media (prefers-reduced-motion: reduce) { .hero h1 .secondary::after { animation: none; } }
     .hero p { color: var(--fg-secondary); font-size: 17px; margin-top: 14px; max-width: 480px; margin-left: auto; margin-right: auto; }
@@ -428,8 +437,8 @@
             <div class="ttl-row" id="ttl-row">
               <div class="ttl-opt" data-ttl="1d">1 day</div>
               <div class="ttl-opt active" data-ttl="7d">7 days</div>
-              <div class="ttl-opt" data-ttl="30d">30 days</div>
-              <div class="ttl-opt" data-ttl="never">Never</div>
+              <div class="ttl-opt" data-ttl="30d" data-pro="true">30 days <span style="font-size:9px;background:var(--yellow);color:var(--bg);padding:1px 4px;border-radius:3px;margin-left:2px;">PRO</span></div>
+              <div class="ttl-opt" data-ttl="never" data-pro="true">Never <span style="font-size:9px;background:var(--yellow);color:var(--bg);padding:1px 4px;border-radius:3px;margin-left:2px;">PRO</span></div>
             </div>
           </div>
           <div class="editor-field">
@@ -642,8 +651,8 @@
 
   <main id="view-pricing" class="container dashboard-view" style="padding-top: 32px; display: none;">
     <h2 class="section-title">Pricing</h2>
-    <div class="editor-card" style="margin-bottom:12px;"><h3 style="font-size:18px;color:var(--yellow-text);">Free — $0</h3><p style="color:var(--fg-secondary);font-size:14px;margin-top:8px;">Unlimited HTML deploys, 7-day TTL, AI editor, no signup required.</p></div>
-    <div class="editor-card"><h3 style="font-size:18px;color:var(--purple-text);">Pro — $9/mo (coming soon)</h3><p style="color:var(--fg-secondary);font-size:14px;margin-top:8px;">Never-expiring sites, custom domains, multi-page uploads, priority AI, advanced analytics.</p></div>
+    <div class="editor-card" style="margin-bottom:12px;"><h3 style="font-size:18px;color:var(--yellow-text);">Free — ₦0</h3><p style="color:var(--fg-secondary);font-size:14px;margin-top:8px;">Unlimited HTML deploys, 1-day & 7-day TTL, AI editor, no signup required.</p></div>
+    <div class="editor-card"><h3 style="font-size:18px;color:var(--purple-text);">Pro — ₦10,000 / 2 months</h3><p style="color:var(--fg-secondary);font-size:14px;margin-top:8px;">30-day & Never-expiry sites, custom domains, multi-page uploads, priority AI, advanced analytics, Pro badge.</p></div>
   </main>
 
   <main id="view-privacy" class="container dashboard-view" style="padding-top: 32px; display: none;">
@@ -793,11 +802,19 @@
     let editing = false;
     let selectedSelector = null;
 
-    // --- TTL selector ---
+    // --- TTL selector (with Pro gating) ---
     document.getElementById("ttl-row").addEventListener("click", (e) => {
       const opt = e.target.closest(".ttl-opt");
       if (!opt) return;
-      document.querySelectorAll(".ttl-opt").forEach(o => o.classList.remove("active"));
+      // Pro check: 30d and Never require Pro
+      if (opt.dataset.pro === "true") {
+        const isProUser = (window.kayhostUserPro === true) || (currentUser && currentUser.pro === true);
+        if (!isProUser) {
+          toast("Pro feature — ₦10,000 for 2 months. Contact kayhost@admin.com to upgrade.", "error");
+          return;
+        }
+      }
+      document.querySelectorAll("#ttl-row .ttl-opt").forEach(o => o.classList.remove("active"));
       opt.classList.add("active");
       currentTtl = opt.dataset.ttl;
     });

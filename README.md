@@ -34,7 +34,15 @@ service cloud.firestore {
       allow read: if true;
       allow create: if true;
     }
+    match /templates/{templateId} {
+      allow read: if true;
+      allow write: if true;
+    }
     match /settings/{key} {
+      allow read: if true;
+      allow write: if true;
+    }
+    match /flagged/{flagId} {
       allow read: if true;
       allow write: if true;
     }
