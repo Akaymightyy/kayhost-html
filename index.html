@@ -345,10 +345,78 @@
 
     /* Mobile nav */
     .mobile-menu-btn { display: none; }
+    /* Nav drawer: slides in from the right, vertically centered (htmlhost.co style) */
+    .nav-drawer-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+      opacity: 0; pointer-events: none; transition: opacity 0.22s ease;
+      z-index: 199; backdrop-filter: blur(2px);
+    }
+    .nav-drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+    .nav-drawer {
+      position: fixed; top: 50%; right: -100%;
+      transform: translateY(-50%);
+      width: min(420px, calc(100vw - 24px));
+      max-height: calc(100vh - 24px);
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 18px; box-shadow: -20px 0 60px -10px rgba(0,0,0,0.5);
+      overflow-y: auto; padding: 18px;
+      transition: right 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+      z-index: 200;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .nav-drawer.open { right: 12px; }
+    .nav-drawer .drawer-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-bottom: 14px; border-bottom: 1px solid var(--border); margin-bottom: 8px;
+    }
+    .nav-drawer .drawer-header .brand-mini {
+      display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px;
+    }
+    .nav-drawer .drawer-close {
+      width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--bg-elevated); color: var(--fg-secondary); cursor: pointer;
+      display: grid; place-items: center;
+    }
+    .nav-drawer .drawer-item {
+      display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+      border-radius: 10px; background: transparent; border: 1px solid transparent;
+      color: var(--fg-secondary); font-size: 14px; cursor: pointer; text-align: left;
+      text-decoration: none; width: 100%; font-family: inherit;
+    }
+    .nav-drawer .drawer-item:hover { background: var(--bg-elevated); color: var(--fg); }
+    .nav-drawer .drawer-item.active {
+      background: rgba(167, 139, 250, 0.12); color: var(--purple-text);
+      border-color: rgba(167, 139, 250, 0.25); font-weight: 500;
+    }
+    .nav-drawer .drawer-item .icon {
+      width: 28px; height: 28px; border-radius: 7px; background: var(--bg-elevated);
+      display: grid; place-items: center; color: var(--fg-secondary); flex-shrink: 0;
+    }
+    .nav-drawer .drawer-item.active .icon { background: rgba(167, 139, 250, 0.18); color: var(--purple-text); }
+    .nav-drawer .drawer-section-label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--fg-muted); margin: 14px 4px 6px;
+    }
+    .nav-drawer .drawer-cta {
+      margin-top: 12px; padding: 14px; border-radius: 12px;
+      background: linear-gradient(135deg, rgba(167, 139, 250, 0.10), rgba(167, 139, 250, 0.03));
+      border: 1px solid rgba(167, 139, 250, 0.25);
+    }
+    .nav-drawer .drawer-user {
+      display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+      border-top: 1px solid var(--border); margin-top: 8px;
+    }
+    .nav-drawer .drawer-user .avatar {
+      width: 32px; height: 32px; border-radius: 50%; background: var(--purple);
+      color: var(--bg); display: grid; place-items: center; font-weight: 700; font-size: 12px;
+    }
     @media (max-width: 640px) {
       .nav-links { display: none; }
-      .nav-links.open { display: flex; flex-direction: column; position: absolute; top: 56px; left: 0; right: 0; background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 8px; z-index: 49; }
-      .mobile-menu-btn { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 7px; border: 1px solid var(--border); cursor: pointer; color: var(--fg-secondary); }
+      .mobile-menu-btn {
+        display: grid; place-items: center; width: 34px; height: 34px; border-radius: 7px;
+        border: 1px solid var(--border); cursor: pointer; color: var(--fg-secondary);
+        background: var(--bg-card);
+      }
     }
   </style>
 </head>
@@ -382,12 +450,76 @@
         <button class="theme-toggle" onclick="toggleTheme()" id="theme-toggle" title="Toggle theme" aria-label="Toggle theme">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="theme-icon"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         </button>
-        <button class="mobile-menu-btn" onclick="document.getElementById('nav-links').classList.toggle('open')" aria-label="Menu">
+        <button class="mobile-menu-btn" onclick="openNavDrawer()" aria-label="Menu">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
       </div>
     </div>
   </header>
+
+  <!-- ===== Nav drawer (slides from right, vertically centered — htmlhost.co style) ===== -->
+  <div class="nav-drawer-backdrop" id="nav-drawer-backdrop" onclick="closeNavDrawer()"></div>
+  <aside class="nav-drawer" id="nav-drawer" role="dialog" aria-label="Navigation">
+    <div class="drawer-header">
+      <div class="brand-mini">
+        <img src="/icon-192.png" alt="" style="width:22px;height:22px;border-radius:6px;" />
+        <span>kayhost</span>
+      </div>
+      <button class="drawer-close" onclick="closeNavDrawer()" aria-label="Close menu">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="drawer-section-label">Menu</div>
+    <button class="drawer-item" data-view="new" onclick="closeNavDrawer(); switchView('new')">
+      <span class="icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
+      <span>New</span>
+    </button>
+    <button class="drawer-item" data-view="sites" onclick="closeNavDrawer(); switchView('sites')">
+      <span class="icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15 15 0 0 1 0 20a15 15 0 0 1 0-20"/></svg></span>
+      <span>My Sites</span>
+    </button>
+    <button class="drawer-item" data-view="templates" onclick="closeNavDrawer(); switchView('templates')">
+      <span class="icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+      <span>Templates</span>
+    </button>
+    <button class="drawer-item" data-view="clipboard" onclick="closeNavDrawer(); switchView('clipboard')">
+      <span class="icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg></span>
+      <span>Clipboard</span>
+    </button>
+    <button class="drawer-item" data-view="tools" onclick="closeNavDrawer(); switchView('tools')">
+      <span class="icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
+      <span>Tools</span>
+    </button>
+    <button class="drawer-item" data-view="settings" onclick="closeNavDrawer(); switchView('settings')">
+      <span class="icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+      <span>Settings</span>
+    </button>
+
+    <div class="drawer-section-label">More</div>
+    <button class="drawer-item" onclick="closeNavDrawer(); window.openLiveChat && window.openLiveChat()">
+      <span class="icon" style="background:rgba(34,197,94,0.15);color:#22c55e;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span>
+      <span style="color:#22c55e;font-weight:500;">Live Chat</span>
+    </button>
+    <button class="drawer-item" onclick="closeNavDrawer(); toggleTheme()">
+      <span class="icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="drawer-theme-icon"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></span>
+      <span>Toggle theme</span>
+    </button>
+
+    <div class="drawer-cta">
+      <div style="font-size:13px;font-weight:600;margin-bottom:4px;color:var(--purple-text);">+ New site</div>
+      <div style="font-size:12px;color:var(--fg-muted);margin-bottom:10px;line-height:1.4;">Paste HTML or upload a folder — get a live link in seconds.</div>
+      <button class="btn btn-purple btn-sm btn-block" onclick="closeNavDrawer(); switchView('new')">→ New project</button>
+    </div>
+
+    <div class="drawer-user" id="drawer-user">
+      <div class="avatar" id="drawer-avatar">?</div>
+      <div style="flex:1;min-width:0;">
+        <div id="drawer-user-name" style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Guest</div>
+        <div id="drawer-user-email" style="font-size:11px;color:var(--fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Not signed in</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="closeNavDrawer(); document.getElementById('signin-modal').classList.remove('hidden')">Sign in</button>
+    </div>
+  </aside>
 
   <!-- ===== Main: New/Deploy view ===== -->
   <main id="view-new" class="container">
@@ -528,23 +660,22 @@
   <!-- ===== Templates view ===== -->
   <main id="view-templates" class="container dashboard-view" style="padding-top: 32px;">
     <h2 class="section-title">Templates</h2>
-    <p style="color: var(--fg-secondary); margin-bottom: 20px;">Start with a pre-built template. Click to load it into the editor.</p>
+    <p style="color: var(--fg-secondary); margin-bottom: 20px;">Curated starting points. Preview, copy the code, or load into the editor in one click.</p>
     <div class="site-list" id="template-list" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-      <div class="editor-card" style="cursor: pointer; padding: 20px;" onclick="loadTemplate('landing')">
-        <h3 style="font-size: 15px; margin-bottom: 6px;">Landing page</h3>
-        <p style="color: var(--fg-secondary); font-size: 13px;">A clean hero section with a call-to-action button.</p>
-      </div>
-      <div class="editor-card" style="cursor: pointer; padding: 20px;" onclick="loadTemplate('portfolio')">
-        <h3 style="font-size: 15px; margin-bottom: 6px;">Portfolio</h3>
-        <p style="color: var(--fg-secondary); font-size: 13px;">Showcase your work with a card grid.</p>
-      </div>
-      <div class="editor-card" style="cursor: pointer; padding: 20px;" onclick="loadTemplate('contact')">
-        <h3 style="font-size: 15px; margin-bottom: 6px;">Contact card</h3>
-        <p style="color: var(--fg-secondary); font-size: 13px;">A vCard-style contact page with QR code.</p>
-      </div>
-      <div class="editor-card" style="cursor: pointer; padding: 20px;" onclick="loadTemplate('blank')">
-        <h3 style="font-size: 15px; margin-bottom: 6px;">Blank canvas</h3>
-        <p style="color: var(--fg-secondary); font-size: 13px;">Start from scratch with an empty HTML5 boilerplate.</p>
+      <div class="editor-card" style="cursor: pointer; padding: 0; overflow: hidden;" onclick="openTemplatePreview('svarna')">
+        <div style="aspect-ratio: 16/10; background: linear-gradient(135deg, #1c1210 0%, #6f5b52 100%); display: flex; align-items: center; justify-content: center; position: relative;">
+          <span style="font-family: 'Cormorant Garamond', Georgia, serif; font-size: 28px; color: #e6c39a; font-style: italic; letter-spacing: 0.04em;">SVARNA</span>
+          <span style="position: absolute; bottom: 8px; right: 8px; font-size: 10px; color: #c3ab9c; letter-spacing: 0.08em;">EST. 1952</span>
+        </div>
+        <div style="padding: 16px;">
+          <h3 style="font-size: 15px; margin-bottom: 6px;">Jewellery Brand Landing</h3>
+          <p style="color: var(--fg-secondary); font-size: 13px; line-height: 1.4; margin-bottom: 8px;">A refined landing page template showcasing handcrafted jewellery collections and brand heritage.</p>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <span style="font-size: 10px; padding: 2px 8px; background: var(--bg-elevated); border-radius: 10px; color: var(--fg-muted);">elegant</span>
+            <span style="font-size: 10px; padding: 2px 8px; background: var(--bg-elevated); border-radius: 10px; color: var(--fg-muted);">responsive</span>
+            <span style="font-size: 10px; padding: 2px 8px; background: var(--bg-elevated); border-radius: 10px; color: var(--fg-muted);">navigation</span>
+          </div>
+        </div>
       </div>
     </div>
     <div id="saved-templates-section" style="margin-top: 32px; display: none;">
@@ -552,7 +683,53 @@
       <p style="color: var(--fg-secondary); margin-bottom: 16px; font-size: 13px;">Templates saved from the admin dashboard.</p>
       <div class="site-list" id="saved-template-list" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;"></div>
     </div>
+    <!-- "Start from scratch" CTA — htmlhost.co style -->
+    <div style="margin-top: 32px; padding: 24px; border-radius: 16px; background: linear-gradient(135deg, rgba(167, 139, 250, 0.10), rgba(167, 139, 250, 0.03)); border: 1px solid rgba(167, 139, 250, 0.25);">
+      <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 8px;">
+        <div style="width: 40px; height: 40px; border-radius: 12px; background: var(--purple); color: var(--bg); display: grid; place-items: center; flex-shrink: 0;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 2 13 14 8 9 13 14 18 9 13 14"/><path d="M4 18 L4 22 L20 22 L20 18"/></svg>
+        </div>
+        <h3 style="font-size: 18px; font-weight: 600; color: var(--fg);">Start from scratch?</h3>
+      </div>
+      <p style="color: var(--fg-secondary); font-size: 14px; margin-bottom: 14px; line-height: 1.5;">Drop in your own HTML, upload a folder, or let the AI editor build something from a prompt. No template required.</p>
+      <button class="btn btn-purple" onclick="switchView('new')">→ New project</button>
+    </div>
   </main>
+
+  <!-- ===== Template preview modal (htmlhost.co style — Copy HTML / Download / Use this template) ===== -->
+  <div id="template-preview-modal" class="hidden" style="position: fixed; inset: 0; z-index: 250; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; padding: 16px;" onclick="if(event.target===this) closeTemplatePreview()">
+    <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; width: 100%; max-width: 1100px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;">
+        <div>
+          <h3 id="tpl-preview-title" style="font-size: 15px; font-weight: 600;">Template preview</h3>
+          <p id="tpl-preview-desc" style="font-size: 12px; color: var(--fg-muted); margin-top: 2px;"></p>
+        </div>
+        <button onclick="closeTemplatePreview()" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--fg-secondary); cursor: pointer; display: grid; place-items: center;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div style="flex: 1; min-height: 0; position: relative; background: white;">
+        <iframe id="tpl-preview-iframe" style="width: 100%; height: 100%; border: 0; min-height: 400px;" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin"></iframe>
+        <div id="tpl-preview-loading" style="position: absolute; inset: 0; display: grid; place-items: center; background: var(--bg); color: var(--fg-muted); font-size: 13px;">
+          <div style="text-align: center;"><div class="spinner" style="margin: 0 auto 8px;"></div>Loading preview...</div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; background: var(--bg-elevated);">
+        <button class="btn btn-ghost btn-sm" onclick="copyTemplateHtml()" style="display: flex; align-items: center; gap: 6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Copy HTML
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="downloadTemplateHtml()" style="display: flex; align-items: center; gap: 6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download
+        </button>
+        <button class="btn btn-purple btn-sm" onclick="useTemplateNow()" style="margin-left: auto; display: flex; align-items: center; gap: 6px;">
+          Use this template
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- ===== Clipboard view ===== -->
   <main id="view-clipboard" class="container dashboard-view" style="padding-top: 32px;">
@@ -766,27 +943,86 @@
     setTheme(getStoredTheme() || (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"));
 
     // --- View switching ---
-    function switchView(view) {
-      // Hide all views (including new static page views)
+    // Map view names to clean URL paths (no more #hash — real paths like /templates, /sites)
+    const VIEW_PATHS = {
+      "new": "/",
+      "sites": "/sites",
+      "templates": "/templates",
+      "clipboard": "/clipboard",
+      "tools": "/tools",
+      "settings": "/settings",
+      "admin": "/admin",
+    };
+    function pathToView(path) {
+      const p = (path || "/").replace(/\/+$/, "");
+      for (const [view, path] of Object.entries(VIEW_PATHS)) {
+        if (path !== "/" && p === path) return view;
+      }
+      return "new";
+    }
+    function openNavDrawer() {
+      const d = document.getElementById("nav-drawer");
+      const b = document.getElementById("nav-drawer-backdrop");
+      if (d) d.classList.add("open");
+      if (b) b.classList.add("open");
+      document.body.style.overflow = "hidden";
+      // sync active item
+      const activeView = (document.querySelector("[data-view].active") || {}).dataset?.view || "new";
+      document.querySelectorAll(".nav-drawer [data-view]").forEach(b => {
+        b.classList.toggle("active", b.dataset.view === activeView);
+      });
+    }
+    function closeNavDrawer() {
+      document.getElementById("nav-drawer")?.classList.remove("open");
+      document.getElementById("nav-drawer-backdrop")?.classList.remove("open");
+      document.body.style.overflow = "";
+    }
+    window.openNavDrawer = openNavDrawer;
+    window.closeNavDrawer = closeNavDrawer;
+
+    function switchView(view, opts) {
+      // Hide all views
       ["new", "sites", "templates", "clipboard", "tools", "settings", "admin", "docs", "changelog", "pricing", "privacy", "terms"].forEach(v => {
         const el = document.getElementById("view-" + v);
         if (el) { el.classList.remove("visible"); el.style.display = "none"; }
       });
       document.getElementById("view-new").classList.toggle("hidden", view !== "new");
-      // Show the selected view
       const target = document.getElementById("view-" + view);
       if (target) { target.classList.add("visible"); target.style.display = "block"; }
-      // Update nav active state
+      // Update nav active state (both desktop nav-links + mobile drawer)
       document.querySelectorAll("[data-view]").forEach(b => b.classList.toggle("active", b.dataset.view === view));
-      document.getElementById("nav-links").classList.remove("open");
+      // Close desktop mobile-menu (legacy)
+      document.getElementById("nav-links")?.classList.remove("open");
+      // Update URL bar — real path, not hash (so /templates shows in address bar)
+      const newPath = VIEW_PATHS[view] || "/";
+      if (!opts || !opts.skipPush) {
+        if (location.pathname !== newPath) {
+          history.pushState({ view }, "", newPath);
+        }
+      }
+      // Update document title
+      const titles = { new:"Kayhost HTML", sites:"My Sites — Kayhost", templates:"Templates — Kayhost", clipboard:"Clipboard — Kayhost", tools:"Tools — Kayhost", settings:"Settings — Kayhost", admin:"Admin — Kayhost" };
+      document.title = titles[view] || "Kayhost HTML";
       // Load data if needed
       if (view === "sites") loadSites();
       if (view === "clipboard") loadClipboard();
       if (view === "settings") showBrowserId();
-      if (view === "templates") { try { loadSavedTemplatesIntoView(); } catch(e) {} } // refresh saved templates
+      if (view === "templates") { try { loadSavedTemplatesIntoView(); } catch(e) {} }
       if (view === "admin") { /* admin data loaded by the module script */ }
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
+    // Back/forward button support
+    window.addEventListener("popstate", (e) => {
+      const view = (e.state && e.state.view) || pathToView(location.pathname);
+      switchView(view, { skipPush: true });
+    });
+    // On first load, route based on URL path
+    (function routeFromUrl() {
+      const v = pathToView(location.pathname);
+      if (v !== "new") {
+        switchView(v, { skipPush: true });
+      }
+    })();
 
     // --- Helpers ---
     function toast(msg, type) {
@@ -1127,41 +1363,157 @@
     }
 
     // --- Templates ---
+    // The only default template is the Svarna jewellery landing, served as a static
+    // file at /svarna-template.html (excluded from the SPA catch-all in vercel.json).
+    // Saved templates from the admin dashboard are fetched into the public Templates
+    // view separately (see loadSavedTemplatesIntoView below).
     const TEMPLATES = {
-      landing: `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>My Landing Page</title>\n<style>\nbody{margin:0;font-family:system-ui,sans-serif;background:#0E0E10;color:#ECECEE;display:grid;place-items:center;min-height:100vh}\n.hero{text-align:center;padding:40px}\n.hero h1{font-size:48px;font-weight:700;letter-spacing:-0.03em;margin-bottom:12px}\n.hero p{color:#9CA3AF;font-size:18px;margin-bottom:24px}\n.hero a{display:inline-block;padding:12px 24px;background:#A78BFA;color:#0E0E10;border-radius:8px;font-weight:600;text-decoration:none}\n</style>\n</head>\n<body>\n<div class="hero">\n<h1>Your product, beautifully simple.</h1>\n<p>Explain what you do in one sentence. Then let them click.</p>\n<a href="#">Get started</a>\n</div>\n</body>\n</html>`,
-      portfolio: `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>Portfolio</title>\n<style>\nbody{margin:0;font-family:system-ui,sans-serif;background:#0E0E10;color:#ECECEE;padding:40px}\nh1{font-size:32px;margin-bottom:24px}\n.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px}\n.card{background:#16161A;border:1px solid #26262C;border-radius:12px;padding:20px}\n.card h3{font-size:16px;margin-bottom:6px}\n.card p{color:#9CA3AF;font-size:14px}\n</style>\n</head>\n<body>\n<h1>My Work</h1>\n<div class="grid">\n<div class="card"><h3>Project One</h3><p>A short description of this project.</p></div>\n<div class="card"><h3>Project Two</h3><p>Another cool thing I built.</p></div>\n<div class="card"><h3>Project Three</h3><p>And this one too.</p></div>\n</div>\n</body>\n</html>`,
-      contact: `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>Contact</title>\n<style>\nbody{margin:0;font-family:system-ui,sans-serif;background:#0E0E10;color:#ECECEE;display:grid;place-items:center;min-height:100vh}\n.card{text-align:center;padding:40px;background:#16161A;border:1px solid #26262C;border-radius:16px}\n.card h1{font-size:28px;margin-bottom:8px}\n.card p{color:#9CA3AF;margin-bottom:16px}\n.card a{color:#A78BFA;text-decoration:none;font-weight:600}\n</style>\n</head>\n<body>\n<div class="card">\n<h1>John Doe</h1>\n<p>Designer & Developer</p>\n<a href="mailto:john@example.com">john@example.com</a>\n</div>\n</body>\n</html>`,
-      blank: `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>My Page</title>\n</head>\n<body>\n\n</body>\n</html>`,
+      svarna: {
+        name: "Jewellery Brand Landing",
+        description: "A refined landing page template showcasing handcrafted jewellery collections and brand heritage.",
+        url: "/svarna-template.html",
+      },
     };
-    function loadTemplate(name) {
-      const html = TEMPLATES[name] || TEMPLATES.blank;
-      document.getElementById("html-input").value = html;
-      currentHtml = html;
-      showEditor();
-      saveToClipboard(html);
-      toast("Template loaded", "success");
-    }
 
-    // Load a template saved from the admin dashboard by its Firestore ID.
-    // We re-fetch from /api/admin?section=templates (GET is public-read) and find by id.
-    window.loadSavedTemplate = async function(id) {
+    // Holds the currently-previewed template's HTML (fetched on demand).
+    let _currentPreviewHtml = "";
+    let _currentPreviewName = "";
+
+    function loadTemplate(name) {
+      // Legacy support — if a hardcoded name is passed, redirect to the preview modal
+      if (TEMPLATES[name]) {
+        openTemplatePreview(name);
+      } else {
+        toast("Template not found", "error");
+      }
+    }
+    window.loadTemplate = loadTemplate;
+
+    // Open the template preview modal — fetches the template's HTML and shows it in an iframe
+    window.openTemplatePreview = async function(name) {
+      const tpl = TEMPLATES[name];
+      if (!tpl) {
+        // Maybe a saved template by ID
+        await openSavedTemplatePreview(name);
+        return;
+      }
+      const modal = document.getElementById("template-preview-modal");
+      const iframe = document.getElementById("tpl-preview-iframe");
+      const loading = document.getElementById("tpl-preview-loading");
+      const titleEl = document.getElementById("tpl-preview-title");
+      const descEl = document.getElementById("tpl-preview-desc");
+      if (!modal || !iframe) return;
+      titleEl.textContent = tpl.name;
+      descEl.textContent = tpl.description;
+      modal.classList.remove("hidden");
+      loading.style.display = "grid";
+      iframe.srcdoc = "";
       try {
-        toast("Loading template...", "info");
+        const res = await fetch(tpl.url);
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const html = await res.text();
+        _currentPreviewHtml = html;
+        _currentPreviewName = tpl.name;
+        iframe.srcdoc = html;
+        iframe.onload = function() {
+          // Hide loading once the iframe's srcdoc renders
+          loading.style.display = "none";
+        };
+        // Fallback hide-loading after 4s (in case onload doesn't fire for srcdoc)
+        setTimeout(function() { loading.style.display = "none"; }, 4000);
+      } catch (err) {
+        loading.innerHTML = '<div style="text-align:center;color:var(--red);">Couldn\'t load preview.<br/><button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="closeTemplatePreview()">Close</button></div>';
+        loading.style.display = "grid";
+        toast("Couldn't load template preview", "error");
+      }
+    };
+
+    // Open a saved (admin-added) template's preview by its Firestore ID
+    async function openSavedTemplatePreview(id) {
+      try {
         const res = await fetch("/api/admin?section=templates");
         if (!res.ok) throw new Error("Couldn't load templates");
         const { templates } = await res.json();
         const t = (templates || []).find(x => x.id === id);
         if (!t || !t.html) { toast("Template not found", "error"); return; }
-        document.getElementById("html-input").value = t.html;
-        currentHtml = t.html;
-        showEditor();
-        saveToClipboard(t.html);
-        toast("Template loaded: " + (t.name || "Untitled"), "success");
+        const modal = document.getElementById("template-preview-modal");
+        const iframe = document.getElementById("tpl-preview-iframe");
+        const loading = document.getElementById("tpl-preview-loading");
+        const titleEl = document.getElementById("tpl-preview-title");
+        const descEl = document.getElementById("tpl-preview-desc");
+        if (!modal || !iframe) return;
+        titleEl.textContent = t.name || "Untitled";
+        descEl.textContent = "Saved template · " + (t.createdAt ? new Date(t.createdAt).toLocaleDateString() : "");
+        modal.classList.remove("hidden");
+        loading.style.display = "grid";
+        iframe.srcdoc = "";
+        _currentPreviewHtml = t.html;
+        _currentPreviewName = t.name || "Untitled";
+        iframe.srcdoc = t.html;
+        iframe.onload = function() { loading.style.display = "none"; };
+        setTimeout(function() { loading.style.display = "none"; }, 4000);
       } catch (err) { toast(err.message, "error"); }
+    }
+
+    window.closeTemplatePreview = function() {
+      const modal = document.getElementById("template-preview-modal");
+      const iframe = document.getElementById("tpl-preview-iframe");
+      if (modal) modal.classList.add("hidden");
+      if (iframe) iframe.srcdoc = "";
+      _currentPreviewHtml = "";
+    };
+
+    // Copy the currently-previewed template's HTML to clipboard
+    window.copyTemplateHtml = async function() {
+      if (!_currentPreviewHtml) { toast("Template not loaded yet", "error"); return; }
+      try {
+        await navigator.clipboard.writeText(_currentPreviewHtml);
+        toast("HTML copied to clipboard", "success");
+      } catch (e) {
+        // Fallback: open a textarea the user can copy from
+        const ta = document.createElement("textarea");
+        ta.value = _currentPreviewHtml;
+        ta.style.cssText = "position:fixed;top:-9999px;";
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); toast("HTML copied to clipboard", "success"); }
+        catch (e2) { toast("Couldn't copy — try Download instead", "error"); }
+        document.body.removeChild(ta);
+      }
+    };
+
+    // Download the currently-previewed template's HTML as a .html file
+    window.downloadTemplateHtml = function() {
+      if (!_currentPreviewHtml) { toast("Template not loaded yet", "error"); return; }
+      const blob = new Blob([_currentPreviewHtml], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = (_currentPreviewName || "template").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") + ".html";
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast("Downloaded", "success");
+    };
+
+    // Load the currently-previewed template's HTML into the editor
+    window.useTemplateNow = function() {
+      if (!_currentPreviewHtml) { toast("Template not loaded yet", "error"); return; }
+      document.getElementById("html-input").value = _currentPreviewHtml;
+      currentHtml = _currentPreviewHtml;
+      closeTemplatePreview();
+      switchView("new");
+      showEditor();
+      saveToClipboard(_currentPreviewHtml);
+      toast("Template loaded into editor", "success");
+    };
+
+    // Load a template saved from the admin dashboard by its Firestore ID.
+    // Kept for backward compatibility — calls the preview modal.
+    window.loadSavedTemplate = async function(id) {
+      await openSavedTemplatePreview(id);
     };
 
     // Fetch admin-saved templates and render them in the public Templates view.
-    // Called on page load and whenever the user switches to the Templates view.
     let _savedTemplatesLoaded = false;
     async function loadSavedTemplatesIntoView() {
       const section = document.getElementById("saved-templates-section");
@@ -1179,9 +1531,8 @@
         list.innerHTML = saved.map(function(t) {
           var name = escapeHtml(t.name || "Untitled");
           var date = t.createdAt ? new Date(t.createdAt).toLocaleDateString() : "";
-          // Get a preview snippet — first 80 chars of text content
           var preview = (t.html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
-          return '<div class="editor-card" style="cursor: pointer; padding: 20px;" onclick="loadSavedTemplate(\'' + escapeHtml(t.id) + '\')">' +
+          return '<div class="editor-card" style="cursor: pointer; padding: 16px;" onclick="openSavedTemplatePreview(\'' + escapeHtml(t.id) + '\')">' +
             '<h3 style="font-size: 15px; margin-bottom: 6px;">' + name + '</h3>' +
             '<p style="color: var(--fg-secondary); font-size: 13px; line-height: 1.4;">' + escapeHtml(preview) + (preview.length >= 80 ? "..." : "") + '</p>' +
             (date ? '<p style="color: var(--fg-muted); font-size: 11px; margin-top: 8px;">Added ' + date + '</p>' : '') +
@@ -1191,7 +1542,7 @@
         section.style.display = "none";
       }
     }
-    // Trigger the fetch on page load (it'll display:none if no templates or fetch fails)
+    // Trigger the fetch on page load
     loadSavedTemplatesIntoView().then(function() { _savedTemplatesLoaded = true; });
 
     // --- Clipboard (recent pastes stored in localStorage) ---
@@ -1368,12 +1719,13 @@
               <div id="user-menu" class="hidden" style="position:absolute;right:0;top:40px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:4px;z-index:50;min-width:140px;box-shadow:var(--shadow-lg);">
                 <button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;" onclick="document.getElementById('user-menu').classList.add('hidden');switchView('sites')">My Sites</button>
                 <button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;" onclick="document.getElementById('user-menu').classList.add('hidden');switchView('settings')">Settings</button>
-                ${userIsAdmin ? `` : ""}
+                ${userIsAdmin ? `<button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;margin-bottom:2px;color:var(--purple-text);" onclick="document.getElementById('user-menu').classList.add('hidden');switchView('admin');loadAdminData('overview')">Admin</button>` : ``}
                 <button class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start;color:var(--red);" onclick="doSignOut()">Sign out</button>
               </div>
             </div>
           `;
         }
+        updateDrawerUser(user);
 
         // If we were trying to go to /admin
         if (window._goToAdmin) {
@@ -1385,13 +1737,14 @@
         if (currentUser) {
           // But we have a localStorage session (from REST API sign-in) — keep showing the user
           // The onAuthStateChanged fired with null (SDK can't verify), but we still have our session
-          // Don't clear it — just leave the UI as is
+          updateDrawerUser(currentUser);
         } else {
           // Truly not signed in
           userIsAdmin = false;
           if (authArea) {
             authArea.innerHTML = '<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'signin-modal\').classList.remove(\'hidden\')">Sign in</button>';
           }
+          updateDrawerUser(null);
           if (window._goToAdmin) {
             window.location.href = "/";
           }
@@ -1575,9 +1928,56 @@
       if (authArea) authArea.innerHTML = '<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'signin-modal\').classList.remove(\'hidden\')">Sign in</button>';
       currentUser = null;
       userIsAdmin = false;
+      updateDrawerUser(null);
       toast("Signed out", "info");
       switchView("new");
     };
+
+    // Update the mobile nav-drawer user section (avatar, name, email, sign-in/out button)
+    function updateDrawerUser(user) {
+      const u = user || currentUser;
+      const avatar = document.getElementById("drawer-avatar");
+      const nameEl = document.getElementById("drawer-user-name");
+      const emailEl = document.getElementById("drawer-user-email");
+      const userBox = document.getElementById("drawer-user");
+      if (!avatar || !nameEl || !emailEl || !userBox) return;
+      if (u) {
+        const initial = (u.displayName || u.email || "U").charAt(0).toUpperCase();
+        nameEl.textContent = u.displayName || u.email || "User";
+        emailEl.textContent = u.email || "";
+        if (u.photoURL) {
+          avatar.innerHTML = '<img src="' + escapeHtml(u.photoURL) + '" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;" />';
+        } else {
+          avatar.textContent = initial;
+        }
+        // Replace the sign-in button with a sign-out button
+        const existingBtn = userBox.querySelector("button");
+        if (existingBtn) existingBtn.remove();
+        if (!userBox.querySelector(".drawer-signout")) {
+          const btn = document.createElement("button");
+          btn.className = "btn btn-ghost btn-sm drawer-signout";
+          btn.style.cssText = "font-size:11px;color:var(--red);";
+          btn.textContent = "Sign out";
+          btn.onclick = function() { closeNavDrawer(); window.doSignOut(); };
+          userBox.appendChild(btn);
+        }
+      } else {
+        nameEl.textContent = "Guest";
+        emailEl.textContent = "Not signed in";
+        avatar.textContent = "?";
+        avatar.innerHTML = "?";
+        // Make sure the sign-in button exists
+        if (!userBox.querySelector("button")) {
+          const btn = document.createElement("button");
+          btn.className = "btn btn-ghost btn-sm";
+          btn.style.cssText = "font-size:11px;";
+          btn.textContent = "Sign in";
+          btn.onclick = function() { closeNavDrawer(); document.getElementById('signin-modal').classList.remove('hidden'); };
+          userBox.appendChild(btn);
+        }
+      }
+    }
+    window.updateDrawerUser = updateDrawerUser;
 
     // --- Triple-click admin access check ---
     // Called when user triple-clicks the logo. Only way to access admin.
@@ -1965,23 +2365,59 @@
     };
   </script>
 
-  <!-- Chat widget auto-loader: fetches embed code from /api/settings and injects it.
+  <!-- Chat widget loader: tries Firestore /api/settings first, falls back to hardcoded Tawk.to code.
        Setting innerHTML alone does NOT execute <script> tags, so we recreate them. -->
   <script>
     (function() {
+      // Hardcoded fallback — your Tawk.to property ID: 6aac37e04d9490344e9bd2d1 / widget: 1k2obkhqh
+      // To change later, paste a new embed code via Admin → Settings → Chat Widget (overrides this).
+      var HARDCODED_TAWK = '<!--Start of Tawk.to Script-->\n'
+        + '<script type="text/javascript">\n'
+        + 'var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();\n'
+        + '(function(){\n'
+        + 'var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];\n'
+        + 's1.async=true;\n'
+        + 's1.src=\'https://embed.tawk.to/6aac37e04d9490344e9bd2d1/1k2obkhqh\';\n'
+        + 's1.charset=\'UTF-8\';\n'
+        + 's1.setAttribute(\'crossorigin\',\'*\');\n'
+        + 's0.parentNode.insertBefore(s1,s0);\n'
+        + '})();\n'
+        + '<\\/script>\n'
+        + '<!--End of Tawk.to Script-->';
+
+      // Expose a global so the nav-drawer "Live Chat" item can programmatically open the Tawk widget.
+      window.openLiveChat = function() {
+        try {
+          if (window.Tawk_API && typeof window.Tawk_API.toggle === "function") {
+            window.Tawk_API.toggle();
+          } else if (window.Tawk_API && typeof window.Tawk_API.maximize === "function") {
+            window.Tawk_API.maximize();
+          } else {
+            // Tawk not loaded yet — inject the embed code now, then try again after a short delay
+            console.log("[chat-widget] Tawk not loaded yet — injecting now.");
+            injectEmbedCode(HARDCODED_TAWK);
+            setTimeout(function() {
+              if (window.Tawk_API && typeof window.Tawk_API.maximize === "function") {
+                window.Tawk_API.maximize();
+              }
+            }, 1500);
+          }
+        } catch (e) {
+          console.warn("[chat-widget] Couldn't open Tawk widget:", e);
+        }
+      };
+
       function injectEmbedCode(code) {
         if (!code || !String(code).trim()) {
-          console.log("[chat-widget] No embed code configured. Set it via Admin → Settings → Chat Widget.");
+          console.log("[chat-widget] No embed code configured.");
           return;
         }
         try {
           var holder = document.createElement('div');
           holder.style.display = 'none';
           holder.innerHTML = String(code);
-          // Re-create every <script> so the browser actually executes it.
-          // (innerHTML-inserted scripts are skipped by design.)
           var scripts = holder.querySelectorAll('script');
-          console.log("[chat-widget] Injecting " + scripts.length + " script tag(s), total " + String(code).length + " chars.");
+          console.log("[chat-widget] Injecting " + scripts.length + " script tag(s), " + String(code).length + " chars.");
           scripts.forEach(function(oldScript) {
             var newScript = document.createElement('script');
             for (var i = 0; i < oldScript.attributes.length; i++) {
@@ -1991,7 +2427,6 @@
             newScript.textContent = oldScript.textContent;
             oldScript.parentNode.replaceChild(newScript, oldScript);
           });
-          // Make holder visible so any non-script elements (e.g. <div> targets) are in the DOM
           holder.style.display = '';
           document.body.appendChild(holder);
           console.log("[chat-widget] Injection complete.");
@@ -1999,20 +2434,28 @@
           console.warn("[chat-widget] Injection failed:", e);
         }
       }
-      // Fetch the public settings + inject chatWidget code if present
+
+      // Try Firestore /api/settings first (lets admin override the hardcoded code).
+      // If it returns empty/missing/error, fall back to HARDCODED_TAWK.
       console.log("[chat-widget] Fetching /api/settings...");
       fetch('/api/settings', { cache: 'no-store' })
         .then(function(r) {
-          if (!r.ok) { console.warn("[chat-widget] /api/settings returned HTTP " + r.status); return null; }
+          if (!r.ok) { console.warn("[chat-widget] /api/settings HTTP " + r.status + " — using hardcoded Tawk code."); return null; }
           return r.json();
         })
         .then(function(data) {
-          if (!data) { console.warn("[chat-widget] No response body from /api/settings"); return; }
-          console.log("[chat-widget] Got settings:", { hasChatWidget: !!data.chatWidget, length: (data.chatWidget || "").length });
-          injectEmbedCode(data.chatWidget);
+          if (!data) { injectEmbedCode(HARDCODED_TAWK); return; }
+          if (data.chatWidget && String(data.chatWidget).trim().length > 10) {
+            console.log("[chat-widget] Using Firestore-configured widget (" + data.chatWidget.length + " chars).");
+            injectEmbedCode(data.chatWidget);
+          } else {
+            console.log("[chat-widget] No chatWidget in /api/settings — using hardcoded Tawk code.");
+            injectEmbedCode(HARDCODED_TAWK);
+          }
         })
         .catch(function(err) {
-          console.warn("[chat-widget] Fetch failed:", err.message || err);
+          console.warn("[chat-widget] /api/settings fetch failed (" + (err.message || err) + ") — using hardcoded Tawk code.");
+          injectEmbedCode(HARDCODED_TAWK);
         });
     })();
   </script>

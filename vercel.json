@@ -8,9 +8,10 @@
     { "source": "/api/clone", "destination": "/api/clone.js" },
     { "source": "/api/signin", "destination": "/api/signin.js" },
     { "source": "/api/save-user", "destination": "/api/save-user.js" },
+    { "source": "/api/settings", "destination": "/api/settings.js" },
     { "source": "/site/:id", "destination": "/api/site/[id].js" },
     { "source": "/__/auth/:catch*", "destination": "/index.html" },
     { "source": "/admin", "destination": "/index.html" },
-    { "source": "/((?!api|site|_next|sw.js|manifest.json|icon|favicon|apple|robots|__).*)", "destination": "/index.html" }
+    { "source": "/((?!api|site|_next|sw.js|manifest.json|icon|favicon|apple|robots|svarna-template|__).*)", "destination": "/index.html" }
   ]
 }
