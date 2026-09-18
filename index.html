@@ -1105,7 +1105,8 @@
       if (!opt) return;
       // Pro check: 30d and Never require Pro
       if (opt.dataset.pro === "true") {
-        const isProUser = (window.kayhostUserPro === true) || (currentUser && currentUser.pro === true);
+        const u = window.currentUser || null;
+        const isProUser = (window.kayhostUserPro === true) || (u && u.pro === true);
         if (!isProUser) {
           showProUpgrade(opt.dataset.ttl === "never" ? "Never-expiring sites" : "30-day TTL", "Longer-lived sites need Pro. ₦10,000 / 2 months — covers 30-day TTL + Never-expiring sites + Clone URL + priority AI editor.");
           return;
@@ -1404,8 +1405,10 @@
 
     // --- Clone from URL ---
     // Gated behind Pro — non-Pro users see the upgrade modal instead of the clone form.
+    // NOTE: `currentUser` is module-scoped, so we read it from window (synced by syncUserToWindow).
     function showCloneModal() {
-      const isProUser = (window.kayhostUserPro === true) || (currentUser && currentUser.pro === true);
+      const u = window.currentUser || null;
+      const isProUser = (window.kayhostUserPro === true) || (u && u.pro === true);
       if (!isProUser) {
         showProUpgrade("Clone from URL", "Clone any live URL into your Kayhost editor — fetch the HTML, host a copy, customize with AI. Available on Pro.");
         return;
@@ -1413,6 +1416,7 @@
       document.getElementById("clone-modal").classList.remove("hidden");
       document.getElementById("clone-url").focus();
     }
+    window.showCloneModal = showCloneModal;
 
     // Open the Pro upgrade modal with an optional feature name + description
     function showProUpgrade(featureName, desc) {
@@ -1885,6 +1889,8 @@
           `;
         }
         updateDrawerUser(user);
+        // Sync currentUser + Pro status to window so the classic script can read them
+        syncUserToWindow(user, userIsAdmin);
 
         // If we were trying to go to /admin
         if (window._goToAdmin) {
@@ -1897,6 +1903,8 @@
           // But we have a localStorage session (from REST API sign-in) — keep showing the user
           // The onAuthStateChanged fired with null (SDK can't verify), but we still have our session
           updateDrawerUser(currentUser);
+          // Still sync to window so the classic script can read it
+          syncUserToWindow(currentUser, userIsAdmin);
         } else {
           // Truly not signed in
           userIsAdmin = false;
@@ -1904,12 +1912,44 @@
             authArea.innerHTML = '<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'signin-modal\').classList.remove(\'hidden\')">Sign in</button>';
           }
           updateDrawerUser(null);
+          syncUserToWindow(null, false);
           if (window._goToAdmin) {
             window.location.href = "/";
           }
         }
       }
     });
+
+    // Sync the current user's profile + Pro status to window so the classic script
+    // (which can't see this module's `let currentUser` variable) can do Pro gating.
+    // Fetches /api/admin?section=users in the background and finds the user by email
+    // to read the `pro` flag (admin-marked via the Users tab).
+    async function syncUserToWindow(user, isAdmin) {
+      window.currentUser = user || null;
+      window.userIsAdmin = !!isAdmin;
+      if (!user || !user.email) {
+        window.kayhostUserPro = false;
+        return;
+      }
+      // Default to false until the fetch completes
+      window.kayhostUserPro = window.kayhostUserPro || false;
+      try {
+        const res = await fetch("/api/admin?section=users");
+        if (!res.ok) return;
+        const data = await res.json();
+        const users = (data && data.users) || [];
+        const me = users.find(u => (u.email || "").toLowerCase() === (user.email || "").toLowerCase());
+        if (me) {
+          window.kayhostUserPro = !!me.pro;
+          if (me._duplicateUids && me._duplicateUids.length) {
+            window.currentUserDuplicateUids = me._duplicateUids;
+          }
+        }
+      } catch (e) {
+        console.warn("[auth] Couldn't fetch user Pro status:", e.message);
+      }
+    }
+    window.syncUserToWindow = syncUserToWindow;
 
     // If we have a localStorage session, render the user UI immediately
     // (don't wait for Firebase SDK which might fail on custom domains)
@@ -2048,6 +2088,8 @@
           providerData: [{ providerId: "password" }],
         };
         userIsAdmin = ADMIN_EMAILS.includes((userData.email || "").toLowerCase());
+        // Sync to window so the classic script can read Pro status + uid
+        syncUserToWindow(currentUser, userIsAdmin);
         // Update nav
         const authArea = document.getElementById("auth-area");
         if (authArea) {
@@ -2088,6 +2130,7 @@
       currentUser = null;
       userIsAdmin = false;
       updateDrawerUser(null);
+      syncUserToWindow(null, false);
       toast("Signed out", "info");
       switchView("new");
     };
