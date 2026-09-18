@@ -557,6 +557,31 @@
       </div>
     </div>
 
+    <!-- ===== Pro upgrade modal (htmlhost.co style — shows when non-Pro user hits a gated feature) ===== -->
+    <div id="pro-upgrade-modal" class="hidden" style="position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this) closeProUpgrade()">
+      <div class="editor-card" style="max-width:420px;width:100%;padding:28px 24px;text-align:center;position:relative;">
+        <button onclick="closeProUpgrade()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--fg-secondary);cursor:pointer;display:grid;place-items:center;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <!-- Pro badge / icon -->
+        <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:14px;background:rgba(245,158,11,0.15);color:#f59e0b;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:14px;">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15 9 22 9 17 14 19 22 12 18 5 22 7 14 2 9 9 9"/></svg>
+          Pro feature
+        </div>
+        <h3 id="pro-upgrade-title" style="font-size:20px;margin-bottom:8px;font-weight:700;">Upgrade to continue</h3>
+        <p id="pro-upgrade-desc" style="color:var(--fg-secondary);font-size:14px;margin-bottom:20px;line-height:1.5;">Subscribe to Pro to continue using this feature.</p>
+        <!-- Price highlight -->
+        <div style="background:var(--bg-elevated);border-radius:12px;padding:14px;margin-bottom:18px;">
+          <div style="font-size:32px;font-weight:700;letter-spacing:-0.02em;">₦10,000<span style="font-size:14px;color:var(--fg-muted);font-weight:400;"> / 2 months</span></div>
+          <div style="font-size:12px;color:var(--fg-muted);margin-top:4px;">Never-expiring sites · Clone any URL · 30-day TTL · Priority AI</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-direction:column;">
+          <button class="btn btn-block" style="background:#CCFF00;color:#000;font-weight:700;border:none;padding:12px;" onclick="window.location.href='mailto:kayhost@admin.com?subject=Pro%20upgrade%20request&body=I%20want%20to%20upgrade%20to%20Pro%20for%20₦10%2C000%2F2%20months.'">Upgrade account</button>
+          <a href="#" onclick="event.preventDefault(); closeProUpgrade(); switchView('new'); toast('Email kayhost@admin.com to upgrade','info');" style="color:var(--fg-muted);font-size:13px;text-decoration:underline;margin-top:4px;">See Pro benefits</a>
+        </div>
+      </div>
+    </div>
+
     <section class="editor-section" id="editor-section">
       <div class="editor-card">
         <textarea class="textarea" id="html-input" placeholder="Paste your HTML here..." spellcheck="false"></textarea>
@@ -578,14 +603,46 @@
         <button class="btn btn-yellow btn-block btn-lg" id="deploy-btn" style="margin-top: 16px;">Deploy</button>
         <div class="deploy-result empty" id="deploy-result"></div>
         <div class="preview-wrap" id="preview-wrap" style="display: none;">
-          <div class="preview-bar">
-            <span>Live preview</span>
-            <div class="actions">
-              <button class="btn btn-ghost btn-sm" onclick="toggleAiEdit()" id="ai-toggle">AI edit</button>
-              <button class="btn btn-ghost btn-sm" onclick="updatePreview()">Refresh</button>
+          <div class="preview-bar" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <!-- Back arrow (rewinds to previous HTML state if any) -->
+              <button class="btn btn-ghost btn-sm" onclick="revertHtml()" title="Revert to previous HTML" style="padding:6px 8px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              </button>
+              <!-- Sparkle AI edit (toggle) -->
+              <button class="btn btn-ghost btn-sm" onclick="toggleAiEdit()" id="ai-toggle" title="Toggle AI editor" style="padding:6px 8px;display:flex;align-items:center;gap:5px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15 9 22 9 17 14 19 22 12 18 5 22 7 14 2 9 9 9"/></svg>
+                <span>AI</span>
+              </button>
+              <!-- Chat / Live chat -->
+              <button class="btn btn-ghost btn-sm" onclick="window.openLiveChat && window.openLiveChat()" title="Open live chat" style="padding:6px 8px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+              </button>
+            </div>
+            <!-- Right side: Refresh + Go (Deploy) -->
+            <div style="display:flex;align-items:center;gap:6px;">
+              <button class="btn btn-ghost btn-sm" onclick="updatePreview()" title="Refresh preview" style="padding:6px 8px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              </button>
+              <button class="btn btn-sm" onclick="document.getElementById('deploy-btn').click()" id="preview-go-btn" style="background:#CCFF00;color:#000;font-weight:600;padding:6px 14px;display:flex;align-items:center;gap:5px;border:none;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                Go
+              </button>
             </div>
           </div>
-          <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin allow-pointer-lock allow-presentation"></iframe>
+          <!-- Preview iframe + instructional overlay + "Edit entire page" chip -->
+          <div style="position:relative;">
+            <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin allow-pointer-lock allow-presentation"></iframe>
+            <!-- Instructional overlay (only visible in AI edit mode) -->
+            <div id="ai-instruction-overlay" style="position:absolute;top:8px;left:8px;padding:4px 10px;border-radius:6px;background:rgba(245,158,11,0.95);color:#000;font-size:11px;font-weight:500;pointer-events:none;display:none;z-index:5;max-width:calc(100% - 16px);">
+              Click an element · double-click to edit text · right-click for more
+            </div>
+            <!-- "Edit entire page" floating chip (only visible in AI edit mode) -->
+            <button id="edit-entire-page-chip" onclick="editEntirePage()" style="position:absolute;top:8px;right:8px;padding:6px 12px;border-radius:14px;background:rgba(20,12,10,0.85);color:#CCFF00;font-size:11px;font-weight:500;border:1px solid rgba(204,255,0,0.35);cursor:pointer;display:none;align-items:center;gap:5px;z-index:5;">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15 9 22 9 17 14 19 22 12 18 5 22 7 14 2 9 9 9"/></svg>
+              Edit entire page
+            </button>
+          </div>
         </div>
       </div>
     </section>
@@ -1037,6 +1094,7 @@
 
     // --- State ---
     let currentHtml = "";
+    let previousHtml = "";  // for the Back-arrow revert button
     let currentTtl = "7d";
     let editing = false;
     let selectedSelector = null;
@@ -1049,7 +1107,7 @@
       if (opt.dataset.pro === "true") {
         const isProUser = (window.kayhostUserPro === true) || (currentUser && currentUser.pro === true);
         if (!isProUser) {
-          toast("Pro feature — ₦10,000 for 2 months. Contact kayhost@admin.com to upgrade.", "error");
+          showProUpgrade(opt.dataset.ttl === "never" ? "Never-expiring sites" : "30-day TTL", "Longer-lived sites need Pro. ₦10,000 / 2 months — covers 30-day TTL + Never-expiring sites + Clone URL + priority AI editor.");
           return;
         }
       }
@@ -1154,17 +1212,24 @@
       editing = !editing;
       const iframe = document.getElementById("preview-iframe");
       const btn = document.getElementById("ai-toggle");
+      const overlay = document.getElementById("ai-instruction-overlay");
+      const chip = document.getElementById("edit-entire-page-chip");
       if (editing) {
         iframe.classList.add("editing");
-        btn.textContent = "Stop AI";
+        // Re-render the AI-toggle button content (icon + label)
+        if (btn) { btn.innerHTML = '<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"12 2 15 9 22 9 17 14 19 22 12 18 5 22 7 14 2 9 9 9\"/></svg><span>Stop AI</span>'; btn.style.background = "rgba(245,158,11,0.15)"; btn.style.color = "#f59e0b"; }
         toast("Click any element to edit with AI", "success");
         wireElementClicks(iframe);
         document.getElementById("ai-panel").classList.add("open");
         document.getElementById("ai-overlay").classList.add("visible");
+        if (overlay) overlay.style.display = "block";
+        if (chip) chip.style.display = "flex";
       } else {
         iframe.classList.remove("editing");
-        btn.textContent = "AI edit";
+        if (btn) { btn.innerHTML = '<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"12 2 15 9 22 9 17 14 19 22 12 18 5 22 7 14 2 9 9 9\"/></svg><span>AI</span>'; btn.style.background = ""; btn.style.color = ""; }
         closeAiPanel();
+        if (overlay) overlay.style.display = "none";
+        if (chip) chip.style.display = "none";
       }
     }
     function closeAiPanel() {
@@ -1172,8 +1237,32 @@
       document.getElementById("ai-overlay").classList.remove("visible");
       editing = false;
       document.getElementById("preview-iframe").classList.remove("editing");
-      document.getElementById("ai-toggle").textContent = "AI edit";
+      const btn = document.getElementById("ai-toggle");
+      if (btn) { btn.innerHTML = '<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"12 2 15 9 22 9 17 14 19 22 12 18 5 22 7 14 2 9 9 9\"/></svg><span>AI</span>'; btn.style.background = ""; btn.style.color = ""; }
+      const overlay = document.getElementById("ai-instruction-overlay");
+      const chip = document.getElementById("edit-entire-page-chip");
+      if (overlay) overlay.style.display = "none";
+      if (chip) chip.style.display = "none";
     }
+    // "Edit entire page" chip — clears the selected selector so the next AI prompt applies to the whole doc
+    window.editEntirePage = function() {
+      selectedSelector = null;
+      const sel = document.getElementById("ai-selector");
+      if (sel) sel.textContent = "Editing entire page";
+      const inst = document.getElementById("ai-instruction");
+      if (inst) inst.focus();
+      toast("AI will edit the entire page", "info");
+    };
+    // Back-arrow revert: go back to previous HTML state (saved before each AI edit or file load)
+    window.revertHtml = function() {
+      if (!previousHtml) { toast("Nothing to revert", "info"); return; }
+      const tmp = currentHtml;
+      currentHtml = previousHtml;
+      previousHtml = tmp;
+      document.getElementById("html-input").value = currentHtml;
+      updatePreview();
+      toast("Reverted", "info");
+    };
     function wireElementClicks(iframe) {
       try {
         const doc = iframe.contentDocument; if (!doc) return;
@@ -1207,6 +1296,7 @@
           throw new Error(errData.error || "AI edit failed");
         }
         const { html } = await res.json();
+        previousHtml = currentHtml;  // remember for Back-arrow revert
         currentHtml = html;
         document.getElementById("html-input").value = html;
         updatePreview();
@@ -1313,7 +1403,33 @@
     });
 
     // --- Clone from URL ---
-    function showCloneModal() { document.getElementById("clone-modal").classList.remove("hidden"); document.getElementById("clone-url").focus(); }
+    // Gated behind Pro — non-Pro users see the upgrade modal instead of the clone form.
+    function showCloneModal() {
+      const isProUser = (window.kayhostUserPro === true) || (currentUser && currentUser.pro === true);
+      if (!isProUser) {
+        showProUpgrade("Clone from URL", "Clone any live URL into your Kayhost editor — fetch the HTML, host a copy, customize with AI. Available on Pro.");
+        return;
+      }
+      document.getElementById("clone-modal").classList.remove("hidden");
+      document.getElementById("clone-url").focus();
+    }
+
+    // Open the Pro upgrade modal with an optional feature name + description
+    function showProUpgrade(featureName, desc) {
+      const modal = document.getElementById("pro-upgrade-modal");
+      const titleEl = document.getElementById("pro-upgrade-title");
+      const descEl = document.getElementById("pro-upgrade-desc");
+      if (!modal) return;
+      if (featureName && titleEl) titleEl.textContent = featureName + " is a Pro feature";
+      if (desc && descEl) descEl.textContent = desc;
+      else if (descEl) descEl.textContent = "Subscribe to Pro to continue using this feature.";
+      modal.classList.remove("hidden");
+    }
+    window.showProUpgrade = showProUpgrade;
+    window.closeProUpgrade = function() {
+      const modal = document.getElementById("pro-upgrade-modal");
+      if (modal) modal.classList.add("hidden");
+    };
     async function doClone() {
       const url = document.getElementById("clone-url").value.trim();
       if (!url) { toast("Enter a URL", "error"); return; }
@@ -1514,6 +1630,8 @@
     };
 
     // Fetch admin-saved templates and render them in the public Templates view.
+    // Each card shows a live mini-iframe preview of the template's HTML (scaled down to fit a 16:10 box),
+    // so users see what the homepage actually looks like — not just a text snippet.
     let _savedTemplatesLoaded = false;
     async function loadSavedTemplatesIntoView() {
       const section = document.getElementById("saved-templates-section");
@@ -1531,16 +1649,57 @@
         list.innerHTML = saved.map(function(t) {
           var name = escapeHtml(t.name || "Untitled");
           var date = t.createdAt ? new Date(t.createdAt).toLocaleDateString() : "";
-          var preview = (t.html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
-          return '<div class="editor-card" style="cursor: pointer; padding: 16px;" onclick="openSavedTemplatePreview(\'' + escapeHtml(t.id) + '\')">' +
-            '<h3 style="font-size: 15px; margin-bottom: 6px;">' + name + '</h3>' +
-            '<p style="color: var(--fg-secondary); font-size: 13px; line-height: 1.4;">' + escapeHtml(preview) + (preview.length >= 80 ? "..." : "") + '</p>' +
-            (date ? '<p style="color: var(--fg-muted); font-size: 11px; margin-top: 8px;">Added ' + date + '</p>' : '') +
-            '</div>';
+          // Each card: 16:10 thumbnail area on top (will host the live mini-iframe), info below
+          var cardId = "tpl-thumb-" + escapeHtml(t.id);
+          return '<div class="editor-card" style="cursor:pointer;padding:0;overflow:hidden;position:relative;" onclick="openSavedTemplatePreview(\'' + escapeHtml(t.id) + '\')">' +
+            '<div id="' + cardId + '" style="aspect-ratio:16/10;background:var(--bg-elevated);overflow:hidden;position:relative;pointer-events:none;">' +
+              // Loading placeholder
+              '<div style="position:absolute;inset:0;display:grid;place-items:center;font-size:11px;color:var(--fg-muted);">Loading preview…</div>' +
+            '</div>' +
+            '<div style="padding:14px;">' +
+              '<h3 style="font-size:15px;margin-bottom:4px;">' + name + '</h3>' +
+              (date ? '<p style="color:var(--fg-muted);font-size:11px;">Added ' + date + '</p>' : '') +
+              '<div style="margin-top:8px;font-size:12px;color:var(--purple-text);font-weight:500;">Preview · Copy · Use →</div>' +
+            '</div>' +
+          '</div>';
         }).join("");
+        // Now inject each template's HTML into its thumbnail iframe (scaled down)
+        saved.forEach(function(t) {
+          injectTemplateThumbnail("tpl-thumb-" + t.id, t.html);
+        });
       } catch (e) {
         section.style.display = "none";
       }
+    }
+    // Inject an HTML document into a small thumbnail container as a scaled-down live iframe.
+    // The iframe is rendered at a desktop width (1024px) and transformed to fit the card,
+    // giving a real "screenshot-style" preview without needing an image generator.
+    function injectTemplateThumbnail(containerId, html) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      try {
+        const iframe = document.createElement("iframe");
+        iframe.style.cssText = "width:1024px;height:640px;border:0;transform-origin:0 0;pointer-events:none;background:white;position:absolute;top:0;left:0;";
+        iframe.sandbox = "allow-scripts allow-same-origin";
+        iframe.srcdoc = html || "";
+        container.appendChild(iframe);
+        // After load, scale the iframe to fit the container's actual width
+        const fit = function() {
+          const w = container.clientWidth;
+          if (!w) return;
+          const scale = w / 1024;
+          iframe.style.transform = "scale(" + scale + ")";
+          iframe.style.height = (640) + "px";  // un-scaled height — container's aspect-ratio handles the visible clip
+          // Hide the loading placeholder once the iframe has rendered
+          const ph = container.querySelector("div");
+          if (ph && ph.textContent && ph.textContent.indexOf("Loading") === 0) ph.style.display = "none";
+        };
+        iframe.onload = fit;
+        // Also fit on window resize (responsive)
+        window.addEventListener("resize", fit);
+        // Fallback fit after 1.5s
+        setTimeout(fit, 1500);
+      } catch (e) { /* ignore */ }
     }
     // Trigger the fetch on page load
     loadSavedTemplatesIntoView().then(function() { _savedTemplatesLoaded = true; });
