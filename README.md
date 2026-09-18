@@ -2,7 +2,15 @@
 
 Dead-simple HTML hosting. Paste HTML, get a live link in seconds. AI-powered visual editor included.
 
-**Current version: v14** — see `Changelog` section below.
+**Current version: v15** — see `Changelog` section below.
+
+## What's new in v15
+
+1. **Preview iframe fixed** — was sandboxed with only `allow-same-origin` (no `allow-scripts`), so any HTML that used JS to render (loading spinner → render) got stuck on the loading screen forever. Now sandboxed with `allow-scripts allow-forms allow-popups allow-modals allow-same-origin allow-pointer-lock allow-presentation` so JS-heavy pages render properly.
+2. **Public Templates view now shows admin-saved templates** — the public Templates page used to show only the 4 hardcoded templates. Now it fetches from `/api/admin?section=templates` (publicly readable) and renders saved templates below the hardcoded ones with name, preview snippet, and date. Click to load.
+3. **AI editor model list fixed** — removed `gemini-3.6-flash` (never existed) and `gemini-1.5-flash` (deprecated). New list: `gemini-flash-latest` → `gemini-2.5-flash` → `gemini-2.0-flash`. Reduced 503 retry wait from 2s to 1s. Added client-side 45s timeout so the spinner can't spin forever — on timeout it shows "Connection error. Try again."
+4. **Clone URL hardened** — server fetch timeout dropped from 10s → 8s to stay safely under Vercel's 10s function limit (previously the function was killed mid-response, truncating the cloned HTML). Client-side 12s timeout added. Removed the broken CORS-direct fetch fallback (it always failed for cross-origin sites). Now shows the actual server error message ("8s timeout", "private/internal IP", "HTTP 403", etc.) instead of a generic "CORS" message. Existing HTML is preserved on clone failure (won't be dropped).
+5. **Chat widget now logs to DevTools console** — if the embed code doesn't load, you'll see `[chat-widget] ...` messages explaining why (no code configured, fetch failed, injection failed). Open DevTools → Console to debug.
 
 ## What's new in v14
 
@@ -224,7 +232,8 @@ kayhost/
 
 ## Changelog
 
-- **v14** (this release) — Chat widget admin config; HTML file upload in Templates; duplicate users deep fix (merge by email in save-user.js + dedupe on display).
+- **v15** (this release) — Preview iframe sandbox fix (`allow-scripts`); public Templates view fetches admin-saved templates; AI editor model list fixed (`gemini-flash-latest` / `2.5-flash` / `2.0-flash`); 45s client-side AI timeout; clone URL 8s timeout + actual error messages; chat-widget console logging.
+- **v14** — Chat widget admin config; HTML file upload in Templates; duplicate users deep fix (merge by email in save-user.js + dedupe on display).
 - **v13** — Patch release for `signin.js` (clean error messages).
 - **v12** — Firestore rules rewrite to allow server-side writes to `users` / `templates` / `settings` (no `request.auth` on server).
 - **v11** — Gemini SDK switch to `@google/genai`; deprecated model fallback list + 503 retry.

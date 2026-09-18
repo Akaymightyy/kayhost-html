@@ -453,7 +453,7 @@
               <button class="btn btn-ghost btn-sm" onclick="updatePreview()">Refresh</button>
             </div>
           </div>
-          <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-same-origin"></iframe>
+          <iframe class="preview-iframe" id="preview-iframe" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin allow-pointer-lock allow-presentation"></iframe>
         </div>
       </div>
     </section>
@@ -546,6 +546,11 @@
         <h3 style="font-size: 15px; margin-bottom: 6px;">Blank canvas</h3>
         <p style="color: var(--fg-secondary); font-size: 13px;">Start from scratch with an empty HTML5 boilerplate.</p>
       </div>
+    </div>
+    <div id="saved-templates-section" style="margin-top: 32px; display: none;">
+      <h3 class="section-title" style="font-size: 18px; margin-bottom: 12px;">Saved templates <span id="saved-templates-count" style="color: var(--fg-muted); font-size: 13px; font-weight: normal;"></span></h3>
+      <p style="color: var(--fg-secondary); margin-bottom: 16px; font-size: 13px;">Templates saved from the admin dashboard.</p>
+      <div class="site-list" id="saved-template-list" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;"></div>
     </div>
   </main>
 
@@ -778,6 +783,7 @@
       if (view === "sites") loadSites();
       if (view === "clipboard") loadClipboard();
       if (view === "settings") showBrowserId();
+      if (view === "templates") { try { loadSavedTemplatesIntoView(); } catch(e) {} } // refresh saved templates
       if (view === "admin") { /* admin data loaded by the module script */ }
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -948,16 +954,36 @@
       if (!inst) { toast("Describe what you want to change", "error"); return; }
       const btn = document.getElementById("ai-apply");
       btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+      // Client-side 45s timeout — Gemini can take 10-30s on a big HTML doc, but past 45s
+      // something is wrong and the user should know.
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 45000);
       try {
-        const res = await fetch("/api/ai-edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ html: currentHtml, selector: selectedSelector, instruction: inst }) });
-        if (!res.ok) throw new Error((await res.json()).error || "AI edit failed");
+        const res = await fetch("/api/ai-edit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ html: currentHtml, selector: selectedSelector, instruction: inst }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "AI edit failed");
+        }
         const { html } = await res.json();
         currentHtml = html;
         document.getElementById("html-input").value = html;
         updatePreview();
         toast("AI applied the change", "success");
         document.getElementById("ai-instruction").value = "";
-      } catch (err) { toast(err.message, "error"); }
+      } catch (err) {
+        clearTimeout(timeout);
+        if (err.name === "AbortError") {
+          toast("Connection error. Try again.", "error");
+        } else {
+          toast(err.message || "Connection error. Try again.", "error");
+        }
+      }
       finally { btn.disabled = false; btn.textContent = "Apply"; }
     }
     document.getElementById("ai-instruction").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); applyAiEdit(); } });
@@ -1056,29 +1082,46 @@
       const url = document.getElementById("clone-url").value.trim();
       if (!url) { toast("Enter a URL", "error"); return; }
       const btn = document.getElementById("clone-go");
+      // Remember the existing HTML so we can restore it if the clone fails
+      const textarea = document.getElementById("html-input");
+      const existingHtml = textarea.value;
       btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Fetching...';
+      // 12s client-side timeout — server has 8s fetch limit + processing, so 12s is safe
+      const controller = new AbortController();
+      const clientTimeout = setTimeout(() => controller.abort(), 12000);
       try {
-        // Fetch via our own API to avoid CORS issues
-        const res = await fetch("/api/clone", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
+        const res = await fetch("/api/clone", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+          signal: controller.signal,
+        });
+        clearTimeout(clientTimeout);
         if (!res.ok) {
-          // If /api/clone doesn't exist, try direct fetch (may fail due to CORS)
-          const directRes = await fetch(url);
-          const html = await directRes.text();
-          document.getElementById("html-input").value = html;
-          currentHtml = html;
-          showEditor();
-          document.getElementById("clone-modal").classList.add("hidden");
-          toast("Cloned from " + url, "success");
-          return;
+          // Show the actual server error message instead of falling back to CORS-direct fetch
+          // (which always fails for cross-origin sites without CORS headers)
+          let errMsg = "Couldn't clone that URL.";
+          try { const errData = await res.json(); if (errData && errData.error) errMsg = errData.error; }
+          catch (e) {}
+          throw new Error(errMsg);
         }
-        const { html } = await res.json();
-        document.getElementById("html-input").value = html;
-        currentHtml = html;
+        const data = await res.json();
+        if (!data.html) throw new Error("That URL returned an empty page.");
+        textarea.value = data.html;
+        currentHtml = data.html;
         showEditor();
         document.getElementById("clone-modal").classList.add("hidden");
-        toast("Cloned from " + url, "success");
+        if (data.warning) toast(data.warning, "info");
+        else toast("Cloned from " + url, "success");
       } catch (err) {
-        toast("Couldn't fetch that URL (CORS). Try pasting the HTML manually.", "error");
+        clearTimeout(clientTimeout);
+        // Restore the existing HTML if it was overwritten (shouldn't be, but defensive)
+        if (existingHtml && !textarea.value) { textarea.value = existingHtml; currentHtml = existingHtml; }
+        if (err.name === "AbortError") {
+          toast("Connection error. Try again.", "error");
+        } else {
+          toast(err.message || "Connection error. Try again.", "error");
+        }
       }
       finally { btn.disabled = false; btn.textContent = "Fetch & host"; }
     }
@@ -1098,6 +1141,58 @@
       saveToClipboard(html);
       toast("Template loaded", "success");
     }
+
+    // Load a template saved from the admin dashboard by its Firestore ID.
+    // We re-fetch from /api/admin?section=templates (GET is public-read) and find by id.
+    window.loadSavedTemplate = async function(id) {
+      try {
+        toast("Loading template...", "info");
+        const res = await fetch("/api/admin?section=templates");
+        if (!res.ok) throw new Error("Couldn't load templates");
+        const { templates } = await res.json();
+        const t = (templates || []).find(x => x.id === id);
+        if (!t || !t.html) { toast("Template not found", "error"); return; }
+        document.getElementById("html-input").value = t.html;
+        currentHtml = t.html;
+        showEditor();
+        saveToClipboard(t.html);
+        toast("Template loaded: " + (t.name || "Untitled"), "success");
+      } catch (err) { toast(err.message, "error"); }
+    };
+
+    // Fetch admin-saved templates and render them in the public Templates view.
+    // Called on page load and whenever the user switches to the Templates view.
+    let _savedTemplatesLoaded = false;
+    async function loadSavedTemplatesIntoView() {
+      const section = document.getElementById("saved-templates-section");
+      const list = document.getElementById("saved-template-list");
+      const count = document.getElementById("saved-templates-count");
+      if (!section || !list) return;
+      try {
+        const res = await fetch("/api/admin?section=templates");
+        if (!res.ok) { section.style.display = "none"; return; }
+        const { templates } = await res.json();
+        const saved = (templates || []).filter(t => t && t.html);
+        if (!saved.length) { section.style.display = "none"; return; }
+        section.style.display = "block";
+        if (count) count.textContent = "(" + saved.length + ")";
+        list.innerHTML = saved.map(function(t) {
+          var name = escapeHtml(t.name || "Untitled");
+          var date = t.createdAt ? new Date(t.createdAt).toLocaleDateString() : "";
+          // Get a preview snippet — first 80 chars of text content
+          var preview = (t.html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+          return '<div class="editor-card" style="cursor: pointer; padding: 20px;" onclick="loadSavedTemplate(\'' + escapeHtml(t.id) + '\')">' +
+            '<h3 style="font-size: 15px; margin-bottom: 6px;">' + name + '</h3>' +
+            '<p style="color: var(--fg-secondary); font-size: 13px; line-height: 1.4;">' + escapeHtml(preview) + (preview.length >= 80 ? "..." : "") + '</p>' +
+            (date ? '<p style="color: var(--fg-muted); font-size: 11px; margin-top: 8px;">Added ' + date + '</p>' : '') +
+            '</div>';
+        }).join("");
+      } catch (e) {
+        section.style.display = "none";
+      }
+    }
+    // Trigger the fetch on page load (it'll display:none if no templates or fetch fails)
+    loadSavedTemplatesIntoView().then(function() { _savedTemplatesLoaded = true; });
 
     // --- Clipboard (recent pastes stored in localStorage) ---
     function saveToClipboard(html) {
@@ -1875,7 +1970,10 @@
   <script>
     (function() {
       function injectEmbedCode(code) {
-        if (!code || !String(code).trim()) return;
+        if (!code || !String(code).trim()) {
+          console.log("[chat-widget] No embed code configured. Set it via Admin → Settings → Chat Widget.");
+          return;
+        }
         try {
           var holder = document.createElement('div');
           holder.style.display = 'none';
@@ -1883,6 +1981,7 @@
           // Re-create every <script> so the browser actually executes it.
           // (innerHTML-inserted scripts are skipped by design.)
           var scripts = holder.querySelectorAll('script');
+          console.log("[chat-widget] Injecting " + scripts.length + " script tag(s), total " + String(code).length + " chars.");
           scripts.forEach(function(oldScript) {
             var newScript = document.createElement('script');
             for (var i = 0; i < oldScript.attributes.length; i++) {
@@ -1895,17 +1994,26 @@
           // Make holder visible so any non-script elements (e.g. <div> targets) are in the DOM
           holder.style.display = '';
           document.body.appendChild(holder);
+          console.log("[chat-widget] Injection complete.");
         } catch (e) {
-          console.warn('Chat widget injection failed:', e);
+          console.warn("[chat-widget] Injection failed:", e);
         }
       }
       // Fetch the public settings + inject chatWidget code if present
+      console.log("[chat-widget] Fetching /api/settings...");
       fetch('/api/settings', { cache: 'no-store' })
-        .then(function(r) { return r.ok ? r.json() : null; })
-        .then(function(data) {
-          if (data && data.chatWidget) injectEmbedCode(data.chatWidget);
+        .then(function(r) {
+          if (!r.ok) { console.warn("[chat-widget] /api/settings returned HTTP " + r.status); return null; }
+          return r.json();
         })
-        .catch(function() { /* silent — no widget, no problem */ });
+        .then(function(data) {
+          if (!data) { console.warn("[chat-widget] No response body from /api/settings"); return; }
+          console.log("[chat-widget] Got settings:", { hasChatWidget: !!data.chatWidget, length: (data.chatWidget || "").length });
+          injectEmbedCode(data.chatWidget);
+        })
+        .catch(function(err) {
+          console.warn("[chat-widget] Fetch failed:", err.message || err);
+        });
     })();
   </script>
 </body>
