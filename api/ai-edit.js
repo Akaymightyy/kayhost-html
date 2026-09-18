@@ -50,7 +50,10 @@ IMPORTANT INSTRUCTIONS:
 Return ONLY the raw HTML:`;
 
     // Try models in order — fallback if one is deprecated/unavailable
-    const models = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash", "gemini-flash-latest"];
+    // NOTE: gemini-3.6-flash and gemini-1.5-flash were removed (don't exist / deprecated).
+    // gemini-flash-latest always points to the current Flash model.
+    // gemini-2.5-flash is the current stable. gemini-2.0-flash is the older fallback.
+    const models = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"];
     let response = null;
     let lastError = null;
     for (const modelName of models) {
@@ -65,9 +68,9 @@ Return ONLY the raw HTML:`;
           lastError = modelErr;
           const errMsg = (modelErr.message || "").toLowerCase();
           console.warn("[ai-edit] Model " + modelName + " attempt " + (attempt+1) + " failed:", (modelErr.message || "").slice(0, 100));
-          // If 503 (overloaded), wait 2s and retry once
+          // If 503 (overloaded), wait 1s (down from 2s) and retry once
           if (errMsg.includes("503") || errMsg.includes("unavailable") || errMsg.includes("high demand")) {
-            if (attempt === 0) { await new Promise(r => setTimeout(r, 2000)); continue; }
+            if (attempt === 0) { await new Promise(r => setTimeout(r, 1000)); continue; }
           }
           // If model not found (404), skip to next model immediately
           break;

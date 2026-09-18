@@ -40,9 +40,9 @@ module.exports = async (req, res) => {
     }
   }
 
-  // --- 3. Fetch with timeout (10s) and redirect validation ---
+  // --- 3. Fetch with timeout (8s — leaves 2s buffer under Vercel's 10s function limit) ---
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
+  const timeout = setTimeout(() => controller.abort(), 8000);
 
   let fetchRes;
   let finalUrl = url;
@@ -68,9 +68,9 @@ module.exports = async (req, res) => {
   } catch (err) {
     clearTimeout(timeout);
     if (err.name === "AbortError") {
-      return res.status(504).json({ error: "The target site took too long to respond (10s timeout). Try a different URL." });
+      return res.status(504).json({ error: "That site took too long to respond (8s timeout). Try a different URL." });
     }
-    return res.status(502).json({ error: "Could not fetch that URL: " + (err.message || "unknown error") });
+    return res.status(502).json({ error: "Couldn't fetch that URL. The site may be down or block cloning. (" + (err.message || "unknown error").slice(0, 80) + ")" });
   }
 
   if (!fetchRes.ok) {
