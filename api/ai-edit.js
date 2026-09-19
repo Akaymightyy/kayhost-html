@@ -1,9 +1,15 @@
-// /api/ai-edit.js — receives { html, selector, instruction }, calls Gemini to rewrite HTML.
+// /api/ai-edit.js — receives { html, selector, instruction, browserId }, calls Gemini to rewrite HTML.
 // Uses the new @google/genai SDK (replaces old @google/generative-ai).
 // Accepts AQ.-format keys (new Google format) — no prefix validation.
+// Free-tier daily limit: 10 edits per browserId per UTC day, tracked in Firestore
+// (collection "aiUsage", doc id `${browserId}_${YYYY-MM-DD}`). BYOK edits (Claude/GPT,
+// and a user's own Gemini key) never touch this route, so they're never limited here.
 const { GoogleGenAI } = require("@google/genai");
+const { getDb } = require("./_firebase");
+const { doc, getDoc, setDoc } = require("firebase/firestore");
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "AQ.Ab8RN6LjZ6Jn2oiBrQj6GkkOzjJk31FqW1kZda3PkFNXjpMF8Q";
+const FREE_DAILY_LIMIT = 10;
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -13,10 +19,32 @@ module.exports = async (req, res) => {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const { html, selector, instruction } = req.body || {};
+    const { html, selector, instruction, browserId } = req.body || {};
 
     if (!html || !instruction) {
       return res.status(400).json({ error: "html and instruction are required" });
+    }
+
+    // --- Daily free-tier limit (per browserId, resets at UTC midnight) ---
+    const today = new Date().toISOString().slice(0, 10);
+    const usageId = (browserId || "anonymous") + "_" + today;
+    let usageCount = 0;
+    try {
+      const db = getDb();
+      const usageRef = doc(db, "aiUsage", usageId);
+      const usageSnap = await getDoc(usageRef);
+      usageCount = usageSnap.exists() ? (usageSnap.data().count || 0) : 0;
+      if (usageCount >= FREE_DAILY_LIMIT) {
+        return res.status(429).json({
+          error: `You've used all ${FREE_DAILY_LIMIT} free AI edits for today. Add your own Gemini, Claude, or GPT key in Settings for unlimited edits, or try again tomorrow.`,
+          limitReached: true,
+        });
+      }
+      await setDoc(usageRef, { count: usageCount + 1, browserId: browserId || "anonymous", date: today }, { merge: true });
+    } catch (usageErr) {
+      // If Firestore tracking fails for any reason, don't block the edit over it —
+      // just skip the limit check for this request.
+      console.warn("[ai-edit] Usage tracking failed (allowing request):", usageErr.message);
     }
 
     // Only check that the key exists — don't validate prefix format
