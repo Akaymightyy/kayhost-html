@@ -909,6 +909,31 @@
       <span class="close" onclick="closeAiPanel()">&times;</span>
     </div>
     <div class="selector" id="ai-selector">Click any element in the preview above</div>
+
+    <div class="row" style="gap:6px;margin-bottom:8px;">
+      <select id="ai-model" class="input" style="flex:1;font-size:13px;padding:8px;" onchange="onAiModelChange()">
+        <option value="gemini">Gemini 2.5 Flash — free</option>
+        <option value="claude-sonnet">Claude Sonnet 5 — bring your key</option>
+        <option value="claude-opus">Claude Opus 5 — bring your key</option>
+        <option value="gpt">GPT-5.5 — bring your key</option>
+      </select>
+    </div>
+
+    <div id="ai-byok-row" style="display:none;gap:6px;margin-bottom:8px;" class="row">
+      <input type="password" id="ai-byok-key" class="input" style="flex:1;font-size:13px;" placeholder="Paste your API key (stays in this browser only)" />
+      <button class="btn btn-ghost btn-sm" onclick="saveByokKey()">Save</button>
+    </div>
+    <div id="ai-byok-saved" style="display:none;font-size:11px;color:var(--fg-muted);margin:-4px 0 8px;">
+      Key saved in this browser · <a href="#" onclick="event.preventDefault();clearByokKey()" style="color:var(--purple-text);">remove</a>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+      <button class="btn btn-ghost btn-sm" onclick="insertAiChip('Make this responsive on mobile')">Make responsive</button>
+      <button class="btn btn-ghost btn-sm" onclick="insertAiChip('Change the color scheme to')">Change colors</button>
+      <button class="btn btn-ghost btn-sm" onclick="insertAiChip('Improve the font size and line height for readability')">Improve readability</button>
+      <button class="btn btn-ghost btn-sm" onclick="insertAiChip('Add a subtle fade-in animation')">Add animation</button>
+    </div>
+
     <div class="row">
       <input type="text" id="ai-instruction" placeholder="Describe the change you want..." />
       <button class="btn btn-purple" id="ai-apply" onclick="applyAiEdit()">Apply</button>
@@ -1223,6 +1248,7 @@
         wireElementClicks(iframe);
         document.getElementById("ai-panel").classList.add("open");
         document.getElementById("ai-overlay").classList.add("visible");
+        onAiModelChange();
         if (overlay) overlay.style.display = "block";
         if (chip) chip.style.display = "flex";
       } else {
@@ -1280,23 +1306,32 @@
       if (!inst) { toast("Describe what you want to change", "error"); return; }
       const btn = document.getElementById("ai-apply");
       btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
-      // Client-side 45s timeout — Gemini can take 10-30s on a big HTML doc, but past 45s
-      // something is wrong and the user should know.
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 45000);
       try {
-        const res = await fetch("/api/ai-edit", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ html: currentHtml, selector: selectedSelector, instruction: inst }),
-          signal: controller.signal,
-        });
-        clearTimeout(timeout);
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || "AI edit failed");
+        const modelChoice = document.getElementById("ai-model").value;
+        const provider = AI_PROVIDERS[modelChoice];
+        let html;
+
+        if (provider.byok) {
+          const key = getByokKey(provider.key);
+          if (!key) { toast("Add your " + provider.label + " API key first", "error"); btn.disabled = false; btn.textContent = "Apply"; clearTimeout(timeout); return; }
+          html = await provider.call(key, currentHtml, selectedSelector, inst, controller.signal);
+        } else {
+          const res = await fetch("/api/ai-edit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ html: currentHtml, selector: selectedSelector, instruction: inst }),
+            signal: controller.signal,
+          });
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || "AI edit failed");
+          }
+          html = (await res.json()).html;
         }
-        const { html } = await res.json();
+
+        clearTimeout(timeout);
         previousHtml = currentHtml;  // remember for Back-arrow revert
         currentHtml = html;
         document.getElementById("html-input").value = html;
@@ -1314,6 +1349,114 @@
       finally { btn.disabled = false; btn.textContent = "Apply"; }
     }
     document.getElementById("ai-instruction").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); applyAiEdit(); } });
+
+    // --- Multi-model AI editing: BYOK (bring your own key) ---
+    // Gemini keeps using our shared server key via /api/ai-edit (unchanged above).
+    // Claude and GPT calls go straight from THIS browser to Anthropic/OpenAI —
+    // the key never touches our server, matching what htmlhost.co advertises.
+    function buildAiPrompt(html, selector, instruction) {
+      return `You are an HTML editor. The user has an HTML document and wants to change a specific part of it.
+
+Here is the complete HTML document:
+\`\`\`html
+${html}
+\`\`\`
+
+The user selected the element matching this CSS selector: "${selector || "body"}"
+
+The user's instruction: "${instruction}"
+
+IMPORTANT INSTRUCTIONS:
+1. Apply the requested change to the selected element (or the whole document if no specific element).
+2. Return the COMPLETE updated HTML document — from <!DOCTYPE html> to </html>.
+3. Do NOT wrap the output in markdown code fences.
+4. Do NOT add any explanation, commentary, or text before or after the HTML.
+5. Do NOT change any part of the document that the user didn't ask to change.
+6. Keep all existing content intact unless the user explicitly asked to change it.
+
+Return ONLY the raw HTML:`;
+    }
+    function cleanAiHtml(raw) {
+      let out = (raw || "").trim();
+      if (out.startsWith("```html")) out = out.replace(/^```html\s*/, "").replace(/\s*```$/, "");
+      else if (out.startsWith("```")) out = out.replace(/^```\s*/, "").replace(/\s*```$/, "");
+      if (!out.toLowerCase().startsWith("<!doctype") && !out.toLowerCase().startsWith("<html")) {
+        const m = out.match(/<!DOCTYPE html>[\s\S]*<\/html>/i);
+        if (m) out = m[0];
+      }
+      return out;
+    }
+    async function callAnthropicDirect(key, html, selector, instruction, signal, model) {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 16000,
+          messages: [{ role: "user", content: buildAiPrompt(html, selector, instruction) }],
+        }),
+        signal,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || "Claude request failed. Check your API key.");
+      return cleanAiHtml(data.content?.[0]?.text);
+    }
+    async function callOpenAiDirect(key, html, selector, instruction, signal) {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+        body: JSON.stringify({
+          model: "gpt-5.5",
+          messages: [{ role: "user", content: buildAiPrompt(html, selector, instruction) }],
+        }),
+        signal,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || "GPT request failed. Check your API key.");
+      return cleanAiHtml(data.choices?.[0]?.message?.content);
+    }
+    const AI_PROVIDERS = {
+      gemini: { byok: false },
+      "claude-sonnet": { byok: true, key: "anthropic", label: "Anthropic", call: (k,h,s,i,sig) => callAnthropicDirect(k,h,s,i,sig,"claude-sonnet-5") },
+      "claude-opus":   { byok: true, key: "anthropic", label: "Anthropic", call: (k,h,s,i,sig) => callAnthropicDirect(k,h,s,i,sig,"claude-opus-5") },
+      "gpt":           { byok: true, key: "openai",    label: "OpenAI",    call: callOpenAiDirect },
+    };
+    function getByokKey(provider) { return localStorage.getItem("kayhost-byok-" + provider) || ""; }
+    function saveByokKey() {
+      const modelChoice = document.getElementById("ai-model").value;
+      const provider = AI_PROVIDERS[modelChoice];
+      const val = document.getElementById("ai-byok-key").value.trim();
+      if (!val) return;
+      localStorage.setItem("kayhost-byok-" + provider.key, val);
+      document.getElementById("ai-byok-key").value = "";
+      onAiModelChange();
+      toast(provider.label + " key saved in this browser", "success");
+    }
+    function clearByokKey() {
+      const modelChoice = document.getElementById("ai-model").value;
+      const provider = AI_PROVIDERS[modelChoice];
+      localStorage.removeItem("kayhost-byok-" + provider.key);
+      onAiModelChange();
+    }
+    function onAiModelChange() {
+      const modelChoice = document.getElementById("ai-model").value;
+      const provider = AI_PROVIDERS[modelChoice];
+      const row = document.getElementById("ai-byok-row");
+      const saved = document.getElementById("ai-byok-saved");
+      if (!provider.byok) { row.style.display = "none"; saved.style.display = "none"; return; }
+      const hasKey = !!getByokKey(provider.key);
+      row.style.display = hasKey ? "none" : "flex";
+      saved.style.display = hasKey ? "block" : "none";
+    }
+    function insertAiChip(text) {
+      const el = document.getElementById("ai-instruction");
+      el.value = text; el.focus();
+    }
 
     // --- Dashboard ---
     async function loadSites() {
