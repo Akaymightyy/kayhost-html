@@ -842,6 +842,11 @@
         <div class="ttl-opt" data-ttl="never" onclick="setDefaultTtl('never')">Never</div>
       </div>
     </div>
+    <div class="editor-card" style="margin-bottom: 12px;">
+      <h3 style="font-size: 15px; margin-bottom: 8px;">AI API Keys (optional)</h3>
+      <p style="color: var(--fg-secondary); font-size: 14px; margin-bottom: 4px;">Bring your own key for unlimited AI edits with Gemini, Claude, or GPT. Keys are saved only in this browser — they're never sent to or stored on Kayhost's servers.</p>
+      <div id="settings-byok-list"></div>
+    </div>
     <div class="editor-card">
       <h3 style="font-size: 15px; margin-bottom: 8px;">Account</h3>
       <p style="color: var(--fg-secondary); font-size: 14px;">You're using Kayhost anonymously. Your browser ID is <code id="settings-browser-id" style="font-family: monospace; color: var(--purple-text);"></code></p>
@@ -927,12 +932,13 @@
       Key saved in this browser · <a href="#" onclick="event.preventDefault();clearByokKey()" style="color:var(--purple-text);">remove</a>
     </div>
 
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
       <button class="btn btn-ghost btn-sm" onclick="insertAiChip('Make this responsive on mobile')">Make responsive</button>
       <button class="btn btn-ghost btn-sm" onclick="insertAiChip('Change the color scheme to')">Change colors</button>
       <button class="btn btn-ghost btn-sm" onclick="insertAiChip('Improve the font size and line height for readability')">Improve readability</button>
       <button class="btn btn-ghost btn-sm" onclick="insertAiChip('Add a subtle fade-in animation')">Add animation</button>
     </div>
+    <div id="ai-usage-badge" style="display:none;font-size:11px;margin-bottom:6px;"></div>
 
     <div class="row">
       <input type="text" id="ai-instruction" placeholder="Describe the change you want..." />
@@ -1088,7 +1094,7 @@
       // Load data if needed
       if (view === "sites") loadSites();
       if (view === "clipboard") loadClipboard();
-      if (view === "settings") showBrowserId();
+      if (view === "settings") { showBrowserId(); renderByokSettings(); }
       if (view === "templates") { try { loadSavedTemplatesIntoView(); } catch(e) {} }
       if (view === "admin") { /* admin data loaded by the module script */ }
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1311,17 +1317,20 @@
       try {
         const modelChoice = document.getElementById("ai-model").value;
         const provider = AI_PROVIDERS[modelChoice];
+        const ownKey = getByokKey(provider.byokProvider);
         let html;
 
-        if (provider.byok) {
-          const key = getByokKey(provider.key);
-          if (!key) { toast("Add your " + provider.label + " API key first", "error"); btn.disabled = false; btn.textContent = "Apply"; clearTimeout(timeout); return; }
-          html = await provider.call(key, currentHtml, selectedSelector, inst, controller.signal);
+        if (ownKey) {
+          html = await provider.directCall(ownKey, currentHtml, selectedSelector, inst, controller.signal);
+        } else if (!provider.allowServerFallback) {
+          toast("Add your " + provider.label + " API key first (see Settings)", "error");
+          btn.disabled = false; btn.textContent = "Apply"; clearTimeout(timeout);
+          return;
         } else {
           const res = await fetch("/api/ai-edit", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ html: currentHtml, selector: selectedSelector, instruction: inst }),
+            body: JSON.stringify({ html: currentHtml, selector: selectedSelector, instruction: inst, browserId: getBrowserId() }),
             signal: controller.signal,
           });
           if (!res.ok) {
@@ -1329,6 +1338,7 @@
             throw new Error(errData.error || "AI edit failed");
           }
           html = (await res.json()).html;
+          bumpLocalUsageDisplay();
         }
 
         clearTimeout(timeout);
@@ -1351,9 +1361,13 @@
     document.getElementById("ai-instruction").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); applyAiEdit(); } });
 
     // --- Multi-model AI editing: BYOK (bring your own key) ---
-    // Gemini keeps using our shared server key via /api/ai-edit (unchanged above).
-    // Claude and GPT calls go straight from THIS browser to Anthropic/OpenAI —
-    // the key never touches our server, matching what htmlhost.co advertises.
+    // Claude and GPT ALWAYS need the person's own key (no shared server key for them).
+    // Gemini normally uses our shared server key via /api/ai-edit (10/day free limit,
+    // enforced server-side in Firestore) — but if the person saved their OWN Gemini
+    // key in Settings, we call Gemini directly from the browser instead, unlimited.
+    // In every BYOK case the key never touches our server — it goes straight from
+    // this browser to Anthropic/OpenAI/Google.
+    const FREE_DAILY_LIMIT = 10;
     function buildAiPrompt(html, selector, instruction) {
       return `You are an HTML editor. The user has an HTML document and wants to change a specific part of it.
 
@@ -1420,19 +1434,58 @@ Return ONLY the raw HTML:`;
       if (!res.ok) throw new Error(data.error?.message || "GPT request failed. Check your API key.");
       return cleanAiHtml(data.choices?.[0]?.message?.content);
     }
+    async function callGeminiDirect(key, html, selector, instruction, signal) {
+      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + encodeURIComponent(key), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: buildAiPrompt(html, selector, instruction) }] }] }),
+        signal,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || "Gemini request failed. Check your API key.");
+      return cleanAiHtml(data.candidates?.[0]?.content?.parts?.[0]?.text);
+    }
     const AI_PROVIDERS = {
-      gemini: { byok: false },
-      "claude-sonnet": { byok: true, key: "anthropic", label: "Anthropic", call: (k,h,s,i,sig) => callAnthropicDirect(k,h,s,i,sig,"claude-sonnet-5") },
-      "claude-opus":   { byok: true, key: "anthropic", label: "Anthropic", call: (k,h,s,i,sig) => callAnthropicDirect(k,h,s,i,sig,"claude-opus-5") },
-      "gpt":           { byok: true, key: "openai",    label: "OpenAI",    call: callOpenAiDirect },
+      gemini:          { byokProvider: "gemini",    label: "Gemini",    allowServerFallback: true,  directCall: callGeminiDirect },
+      "claude-sonnet": { byokProvider: "anthropic", label: "Anthropic", allowServerFallback: false, directCall: (k,h,s,i,sig) => callAnthropicDirect(k,h,s,i,sig,"claude-sonnet-5") },
+      "claude-opus":   { byokProvider: "anthropic", label: "Anthropic", allowServerFallback: false, directCall: (k,h,s,i,sig) => callAnthropicDirect(k,h,s,i,sig,"claude-opus-5") },
+      "gpt":           { byokProvider: "openai",    label: "OpenAI",    allowServerFallback: false, directCall: callOpenAiDirect },
     };
     function getByokKey(provider) { return localStorage.getItem("kayhost-byok-" + provider) || ""; }
+    function setByokKey(provider, value) { localStorage.setItem("kayhost-byok-" + provider, value); }
+    function removeByokKey(provider) { localStorage.removeItem("kayhost-byok-" + provider); }
+
+    // --- Free-tier usage counter (client-side mirror of the server-enforced limit) ---
+    function getLocalUsageToday() {
+      const today = new Date().toISOString().slice(0, 10);
+      let raw = {};
+      try { raw = JSON.parse(localStorage.getItem("kayhost-ai-usage") || "{}"); } catch (e) {}
+      return raw.date === today ? (raw.count || 0) : 0;
+    }
+    function bumpLocalUsageDisplay() {
+      const today = new Date().toISOString().slice(0, 10);
+      const count = getLocalUsageToday() + 1;
+      localStorage.setItem("kayhost-ai-usage", JSON.stringify({ date: today, count }));
+      renderUsageBadge();
+    }
+    function renderUsageBadge() {
+      const el = document.getElementById("ai-usage-badge");
+      if (!el) return;
+      const modelChoice = document.getElementById("ai-model").value;
+      const provider = AI_PROVIDERS[modelChoice];
+      const ownKey = getByokKey(provider.byokProvider);
+      if (ownKey || !provider.allowServerFallback) { el.style.display = "none"; return; }
+      const used = getLocalUsageToday();
+      el.style.display = "block";
+      el.textContent = used + "/" + FREE_DAILY_LIMIT + " free edits today" + (used >= FREE_DAILY_LIMIT ? " — add your own key in Settings for more" : "");
+      el.style.color = used >= FREE_DAILY_LIMIT ? "#f59e0b" : "var(--fg-muted)";
+    }
     function saveByokKey() {
       const modelChoice = document.getElementById("ai-model").value;
       const provider = AI_PROVIDERS[modelChoice];
       const val = document.getElementById("ai-byok-key").value.trim();
       if (!val) return;
-      localStorage.setItem("kayhost-byok-" + provider.key, val);
+      setByokKey(provider.byokProvider, val);
       document.getElementById("ai-byok-key").value = "";
       onAiModelChange();
       toast(provider.label + " key saved in this browser", "success");
@@ -1440,7 +1493,7 @@ Return ONLY the raw HTML:`;
     function clearByokKey() {
       const modelChoice = document.getElementById("ai-model").value;
       const provider = AI_PROVIDERS[modelChoice];
-      localStorage.removeItem("kayhost-byok-" + provider.key);
+      removeByokKey(provider.byokProvider);
       onAiModelChange();
     }
     function onAiModelChange() {
@@ -1448,14 +1501,57 @@ Return ONLY the raw HTML:`;
       const provider = AI_PROVIDERS[modelChoice];
       const row = document.getElementById("ai-byok-row");
       const saved = document.getElementById("ai-byok-saved");
-      if (!provider.byok) { row.style.display = "none"; saved.style.display = "none"; return; }
-      const hasKey = !!getByokKey(provider.key);
-      row.style.display = hasKey ? "none" : "flex";
+      const hasKey = !!getByokKey(provider.byokProvider);
+      // Gemini's key box is optional (server fallback exists) — only force it open
+      // for providers with no free tier at all.
+      row.style.display = (!hasKey && !provider.allowServerFallback) ? "flex" : "none";
       saved.style.display = hasKey ? "block" : "none";
+      renderUsageBadge();
     }
     function insertAiChip(text) {
       const el = document.getElementById("ai-instruction");
       el.value = text; el.focus();
+    }
+
+    // --- Settings page: manage all BYOK keys in one place ---
+    const BYOK_SETTINGS_PROVIDERS = [
+      { key: "gemini", label: "Google Gemini", hint: "Overrides the free " + FREE_DAILY_LIMIT + "/day shared limit — unlimited edits with your own key." },
+      { key: "anthropic", label: "Anthropic (Claude)", hint: "Needed to use Claude Sonnet 5 or Claude Opus 5 in the AI editor." },
+      { key: "openai", label: "OpenAI (GPT)", hint: "Needed to use GPT-5.5 in the AI editor." },
+    ];
+    function renderByokSettings() {
+      const el = document.getElementById("settings-byok-list");
+      if (!el) return;
+      el.innerHTML = BYOK_SETTINGS_PROVIDERS.map(p => {
+        const has = !!getByokKey(p.key);
+        return `<div style="padding:10px 0;border-top:1px solid var(--border);">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <div>
+              <div style="font-size:14px;font-weight:500;">${escapeHtml(p.label)}</div>
+              <div style="font-size:12px;color:var(--fg-muted);">${escapeHtml(p.hint)}</div>
+            </div>
+            ${has ? `<button class="btn btn-ghost btn-sm" onclick="removeByokKeySettings('${p.key}')">Remove</button>` : ""}
+          </div>
+          ${has
+            ? `<div style="font-size:12px;color:var(--fg-muted);margin-top:6px;">&#10003; Key saved in this browser</div>`
+            : `<div class="row" style="margin-top:8px;">
+                <input type="password" class="input" id="settings-byok-${p.key}" style="flex:1;font-size:13px;" placeholder="Paste your ${escapeHtml(p.label)} API key" />
+                <button class="btn btn-ghost btn-sm" onclick="saveByokKeySettings('${p.key}')">Save</button>
+              </div>`}
+        </div>`;
+      }).join("");
+    }
+    function saveByokKeySettings(providerKey) {
+      const input = document.getElementById("settings-byok-" + providerKey);
+      const val = (input?.value || "").trim();
+      if (!val) return;
+      setByokKey(providerKey, val);
+      renderByokSettings();
+      toast("Key saved in this browser", "success");
+    }
+    function removeByokKeySettings(providerKey) {
+      removeByokKey(providerKey);
+      renderByokSettings();
     }
 
     // --- Dashboard ---
