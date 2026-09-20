@@ -267,6 +267,16 @@
       border: 1px solid var(--border); color: var(--fg); font-size: 14px;
     }
     .ai-panel input:focus { outline: none; border-color: var(--purple); }
+    /* While the AI editor is open, force any third-party chat-widget bubble out of the
+       way (belt-and-braces alongside Tawk_API.hideWidget()/showWidget() in JS below —
+       this covers Crisp, Intercom, or any other provider without that JS hook). */
+    body.ai-editing-active #tawkchat-container,
+    body.ai-editing-active .crisp-client,
+    body.ai-editing-active #intercom-container,
+    body.ai-editing-active iframe[title="chat widget"],
+    body.ai-editing-active iframe[title*="Intercom"] {
+      display: none !important;
+    }
 
     /* ===== Features ===== */
     .features-section { padding: 48px 0; border-top: 1px solid var(--border); }
@@ -584,6 +594,13 @@
 
     <section class="editor-section" id="editor-section">
       <div class="editor-card">
+        <div id="clone-links-bar" style="display:none;padding:10px 12px;margin-bottom:10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-elevated);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span style="font-size:12px;color:var(--fg-muted);">Other pages found on this site:</span>
+            <span style="cursor:pointer;color:var(--fg-muted);font-size:16px;line-height:1;" onclick="document.getElementById('clone-links-bar').style.display='none'">&times;</span>
+          </div>
+          <div id="clone-links-list" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+        </div>
         <textarea class="textarea" id="html-input" placeholder="Paste your HTML here..." spellcheck="false"></textarea>
         <div class="editor-row">
           <div class="editor-field">
@@ -918,8 +935,11 @@
     <div class="row" style="gap:6px;margin-bottom:8px;">
       <select id="ai-model" class="input" style="flex:1;font-size:13px;padding:8px;" onchange="onAiModelChange()">
         <option value="gemini">Gemini 2.5 Flash — free</option>
+        <option value="gemini-pro">Gemini 2.5 Pro — bring your key</option>
+        <option value="claude-haiku">Claude Haiku 4.5 — bring your key</option>
         <option value="claude-sonnet">Claude Sonnet 5 — bring your key</option>
         <option value="claude-opus">Claude Opus 5 — bring your key</option>
+        <option value="gpt-mini">GPT-4.1 mini — bring your key</option>
         <option value="gpt">GPT-5.5 — bring your key</option>
       </select>
     </div>
@@ -1255,6 +1275,8 @@
         document.getElementById("ai-panel").classList.add("open");
         document.getElementById("ai-overlay").classList.add("visible");
         onAiModelChange();
+        try { window.Tawk_API && window.Tawk_API.hideWidget && window.Tawk_API.hideWidget(); } catch (e) {}
+        document.body.classList.add("ai-editing-active");
         if (overlay) overlay.style.display = "block";
         if (chip) chip.style.display = "flex";
       } else {
@@ -1268,6 +1290,8 @@
     function closeAiPanel() {
       document.getElementById("ai-panel").classList.remove("open");
       document.getElementById("ai-overlay").classList.remove("visible");
+      try { window.Tawk_API && window.Tawk_API.showWidget && window.Tawk_API.showWidget(); } catch (e) {}
+      document.body.classList.remove("ai-editing-active");
       editing = false;
       document.getElementById("preview-iframe").classList.remove("editing");
       const btn = document.getElementById("ai-toggle");
@@ -1420,12 +1444,12 @@ Return ONLY the raw HTML:`;
       if (!res.ok) throw new Error(data.error?.message || "Claude request failed. Check your API key.");
       return cleanAiHtml(data.content?.[0]?.text);
     }
-    async function callOpenAiDirect(key, html, selector, instruction, signal) {
+    async function callOpenAiDirect(key, html, selector, instruction, signal, model) {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
         body: JSON.stringify({
-          model: "gpt-5.5",
+          model: model || "gpt-5.5",
           messages: [{ role: "user", content: buildAiPrompt(html, selector, instruction) }],
         }),
         signal,
@@ -1434,8 +1458,8 @@ Return ONLY the raw HTML:`;
       if (!res.ok) throw new Error(data.error?.message || "GPT request failed. Check your API key.");
       return cleanAiHtml(data.choices?.[0]?.message?.content);
     }
-    async function callGeminiDirect(key, html, selector, instruction, signal) {
-      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + encodeURIComponent(key), {
+    async function callGeminiDirect(key, html, selector, instruction, signal, model) {
+      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + (model || "gemini-2.5-flash") + ":generateContent?key=" + encodeURIComponent(key), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contents: [{ parts: [{ text: buildAiPrompt(html, selector, instruction) }] }] }),
@@ -1447,9 +1471,12 @@ Return ONLY the raw HTML:`;
     }
     const AI_PROVIDERS = {
       gemini:          { byokProvider: "gemini",    label: "Gemini",    allowServerFallback: true,  directCall: callGeminiDirect },
+      "gemini-pro":    { byokProvider: "gemini",    label: "Gemini",    allowServerFallback: false, directCall: (k,h,s,i,sig) => callGeminiDirect(k,h,s,i,sig,"gemini-2.5-pro") },
+      "claude-haiku":  { byokProvider: "anthropic", label: "Anthropic", allowServerFallback: false, directCall: (k,h,s,i,sig) => callAnthropicDirect(k,h,s,i,sig,"claude-haiku-4-5-20251001") },
       "claude-sonnet": { byokProvider: "anthropic", label: "Anthropic", allowServerFallback: false, directCall: (k,h,s,i,sig) => callAnthropicDirect(k,h,s,i,sig,"claude-sonnet-5") },
       "claude-opus":   { byokProvider: "anthropic", label: "Anthropic", allowServerFallback: false, directCall: (k,h,s,i,sig) => callAnthropicDirect(k,h,s,i,sig,"claude-opus-5") },
-      "gpt":           { byokProvider: "openai",    label: "OpenAI",    allowServerFallback: false, directCall: callOpenAiDirect },
+      "gpt-mini":      { byokProvider: "openai",    label: "OpenAI",    allowServerFallback: false, directCall: (k,h,s,i,sig) => callOpenAiDirect(k,h,s,i,sig,"gpt-4.1-mini") },
+      "gpt":           { byokProvider: "openai",    label: "OpenAI",    allowServerFallback: false, directCall: (k,h,s,i,sig) => callOpenAiDirect(k,h,s,i,sig,"gpt-5.5") },
     };
     function getByokKey(provider) { return localStorage.getItem("kayhost-byok-" + provider) || ""; }
     function setByokKey(provider, value) { localStorage.setItem("kayhost-byok-" + provider, value); }
@@ -1676,11 +1703,16 @@ Return ONLY the raw HTML:`;
     async function doClone() {
       const url = document.getElementById("clone-url").value.trim();
       if (!url) { toast("Enter a URL", "error"); return; }
+      await cloneUrl(url);
+    }
+    async function cloneUrl(url) {
+      document.getElementById("clone-url").value = url;
       const btn = document.getElementById("clone-go");
       // Remember the existing HTML so we can restore it if the clone fails
       const textarea = document.getElementById("html-input");
       const existingHtml = textarea.value;
       btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Fetching...';
+      document.getElementById("clone-links-bar").style.display = "none";
       // 12s client-side timeout — server has 8s fetch limit + processing, so 12s is safe
       const controller = new AbortController();
       const clientTimeout = setTimeout(() => controller.abort(), 12000);
@@ -1708,6 +1740,8 @@ Return ONLY the raw HTML:`;
         document.getElementById("clone-modal").classList.add("hidden");
         if (data.warning) toast(data.warning, "info");
         else toast("Cloned from " + url, "success");
+        // Show other pages found on this site, so the person can clone another one next
+        renderCloneLinks(data.links);
       } catch (err) {
         clearTimeout(clientTimeout);
         // Restore the existing HTML if it was overwritten (shouldn't be, but defensive)
@@ -1719,6 +1753,16 @@ Return ONLY the raw HTML:`;
         }
       }
       finally { btn.disabled = false; btn.textContent = "Fetch & host"; }
+    }
+    function renderCloneLinks(links) {
+      const bar = document.getElementById("clone-links-bar");
+      const list = document.getElementById("clone-links-list");
+      if (!bar || !list) return;
+      if (!links || !links.length) { bar.style.display = "none"; return; }
+      list.innerHTML = links.map(l =>
+        `<button class="btn btn-ghost btn-sm" onclick="cloneUrl('${l.url.replace(/'/g, "\\'")}')" title="${escapeHtml(l.url)}">${escapeHtml(l.label || l.url)}</button>`
+      ).join("");
+      bar.style.display = "block";
     }
 
     // --- Templates ---
