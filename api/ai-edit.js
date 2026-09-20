@@ -26,12 +26,16 @@ module.exports = async (req, res) => {
     }
 
     // --- Daily free-tier limit (per browserId, resets at UTC midnight) ---
+    // Only CHECK here — we only count it against the quota once Gemini actually
+    // succeeds (see the setDoc call further down), so a failed/unavailable-model
+    // attempt doesn't burn one of the person's 10 free edits for nothing.
     const today = new Date().toISOString().slice(0, 10);
     const usageId = (browserId || "anonymous") + "_" + today;
     let usageCount = 0;
+    let usageDb = null;
     try {
-      const db = getDb();
-      const usageRef = doc(db, "aiUsage", usageId);
+      usageDb = getDb();
+      const usageRef = doc(usageDb, "aiUsage", usageId);
       const usageSnap = await getDoc(usageRef);
       usageCount = usageSnap.exists() ? (usageSnap.data().count || 0) : 0;
       if (usageCount >= FREE_DAILY_LIMIT) {
@@ -40,11 +44,10 @@ module.exports = async (req, res) => {
           limitReached: true,
         });
       }
-      await setDoc(usageRef, { count: usageCount + 1, browserId: browserId || "anonymous", date: today }, { merge: true });
     } catch (usageErr) {
       // If Firestore tracking fails for any reason, don't block the edit over it —
       // just skip the limit check for this request.
-      console.warn("[ai-edit] Usage tracking failed (allowing request):", usageErr.message);
+      console.warn("[ai-edit] Usage check failed (allowing request):", usageErr.message);
     }
 
     // Only check that the key exists — don't validate prefix format
@@ -77,11 +80,15 @@ IMPORTANT INSTRUCTIONS:
 
 Return ONLY the raw HTML:`;
 
-    // Try models in order — fallback if one is deprecated/unavailable
-    // NOTE: gemini-3.6-flash and gemini-1.5-flash were removed (don't exist / deprecated).
-    // gemini-flash-latest always points to the current Flash model.
-    // gemini-2.5-flash is the current stable. gemini-2.0-flash is the older fallback.
-    const models = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"];
+    // Try models in order — fallback if one is deprecated/unavailable.
+    // Verified against Google's official deprecation page as of Sept 2026:
+    // - gemini-2.0-flash was FULLY SHUT DOWN June 1, 2026 — removed from this list.
+    // - gemini-2.5-flash is GA-stable until Oct 16, 2026 (safe baseline for now).
+    // - gemini-flash-latest is an alias that always points to the current-gen Flash
+    //   model (now gemini-3.5-flash under the hood as of May 2026).
+    // - gemini-3-flash-preview / gemini-3.1-flash-lite added as newer-gen fallbacks
+    //   so this doesn't break again when 2.5-flash is eventually shut down.
+    const models = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-3-flash-preview", "gemini-3.1-flash-lite"];
     let response = null;
     let lastError = null;
     for (const modelName of models) {
@@ -119,6 +126,16 @@ Return ONLY the raw HTML:`;
         }
       }
       return res.status(500).json({ error: msg });
+    }
+
+    // Only now — a model actually answered — count it against the free daily quota.
+    try {
+      if (usageDb) {
+        const usageRef = doc(usageDb, "aiUsage", usageId);
+        await setDoc(usageRef, { count: usageCount + 1, browserId: browserId || "anonymous", date: today }, { merge: true });
+      }
+    } catch (usageErr) {
+      console.warn("[ai-edit] Usage increment failed (edit still applied):", usageErr.message);
     }
 
     let updatedHtml = response.text;
