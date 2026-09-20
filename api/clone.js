@@ -109,7 +109,35 @@ module.exports = async (req, res) => {
     }
   }
 
-  return res.status(200).json({ html, warning });
+  // --- 7. Discover other same-site pages (so a clone isn't stuck at just one page) ---
+  // Regex-based, not a full DOM parser — matches this file's existing lightweight style.
+  let links = [];
+  try {
+    const finalHost = new URL(finalUrl).hostname.toLowerCase();
+    const selfKey = finalUrl.split("#")[0].replace(/\/$/, "");
+    const seen = new Set([selfKey]);
+    const linkRegex = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    let m;
+    while ((m = linkRegex.exec(html)) && links.length < 10) {
+      const href = m[1];
+      if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:") || href.startsWith("javascript:")) continue;
+      let abs;
+      try { abs = new URL(href, finalUrl); } catch (e) { continue; }
+      if (abs.protocol !== "http:" && abs.protocol !== "https:") continue;
+      if (abs.hostname.toLowerCase() !== finalHost) continue;
+      abs.hash = "";
+      const key = abs.href.replace(/\/$/, "");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const label = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 40) || abs.pathname;
+      links.push({ url: abs.href, label });
+    }
+  } catch (e) {
+    // Link discovery is a bonus, not critical — a failure here shouldn't fail the clone.
+    console.warn("[clone] Link discovery failed:", e.message);
+  }
+
+  return res.status(200).json({ html, warning, links });
 };
 
 function escapeAttr(s) {
