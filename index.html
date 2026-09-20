@@ -529,6 +529,10 @@
       <span class="icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
       <span>Settings</span>
     </button>
+    <button class="drawer-item" data-view="pricing" onclick="closeNavDrawer(); switchView('pricing')">
+      <span class="icon" style="background:rgba(245,158,11,0.15);color:#f59e0b;"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15 9 22 9 17 14 19 22 12 18 5 22 7 14 2 9 9 9"/></svg></span>
+      <span style="color:#f59e0b;font-weight:500;">Pricing · Pro</span>
+    </button>
 
     <div class="drawer-section-label">More</div>
     <button class="drawer-item" onclick="closeNavDrawer(); window.openLiveChat && window.openLiveChat()">
@@ -616,7 +620,7 @@
         </div>
         <div style="display:flex;gap:8px;flex-direction:column;">
           <button class="btn btn-block" style="background:#CCFF00;color:#000;font-weight:700;border:none;padding:12px;" onclick="window.location.href='mailto:kayhost@admin.com?subject=Pro%20upgrade%20request&body=I%20want%20to%20upgrade%20to%20Pro%20for%20₦10%2C000%2F2%20months.'">Upgrade account</button>
-          <a href="#" onclick="event.preventDefault(); closeProUpgrade(); switchView('new'); toast('Email kayhost@admin.com to upgrade','info');" style="color:var(--fg-muted);font-size:13px;text-decoration:underline;margin-top:4px;">See Pro benefits</a>
+          <a href="#" onclick="event.preventDefault(); closeProUpgrade(); switchView('pricing');" style="color:var(--fg-muted);font-size:13px;text-decoration:underline;margin-top:4px;">See Pro benefits</a>
         </div>
       </div>
     </div>
@@ -646,7 +650,13 @@
             <input class="input" id="title-input" placeholder="My page" value="Untitled" />
           </div>
         </div>
-        <button class="btn btn-yellow btn-block btn-lg" id="deploy-btn" style="margin-top: 16px;">Deploy</button>
+        <div style="display:flex;gap:8px;margin-top:16px;align-items:stretch;">
+          <button class="btn btn-yellow btn-block btn-lg" id="deploy-btn">Deploy</button>
+          <button class="btn btn-ghost" id="download-html-btn" onclick="downloadCurrentHtml()" title="Download HTML from the paste box" style="flex-shrink:0;display:flex;align-items:center;gap:6px;padding:0 16px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Download</span>
+          </button>
+        </div>
         <div class="deploy-result empty" id="deploy-result"></div>
         <div class="preview-wrap" id="preview-wrap" style="display: none;">
           <div class="preview-bar" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;">
@@ -938,8 +948,115 @@
 
   <main id="view-pricing" class="container dashboard-view" style="padding-top: 32px; display: none;">
     <h2 class="section-title">Pricing</h2>
-    <div class="editor-card" style="margin-bottom:12px;"><h3 style="font-size:18px;color:var(--yellow-text);">Free — ₦0</h3><p style="color:var(--fg-secondary);font-size:14px;margin-top:8px;">Unlimited HTML deploys, 1-day & 7-day TTL, AI editor, no signup required.</p></div>
-    <div class="editor-card"><h3 style="font-size:18px;color:var(--purple-text);">Pro — ₦10,000 / 2 months</h3><p style="color:var(--fg-secondary);font-size:14px;margin-top:8px;">30-day & Never-expiry sites, custom domains, multi-page uploads, priority AI, advanced analytics, Pro badge.</p></div>
+    <p style="color:var(--fg-secondary);font-size:14px;margin-bottom:24px;line-height:1.6;">Pick where you fit. Anonymous can deploy free pages without signing up. Sign in to keep your sites tracked across browsers. Go Pro for the long-lived, power-user features.</p>
+
+    <!-- ===== 3-tier comparison cards ===== -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-bottom:32px;">
+      <!-- Tier 1: Anonymous (Free, no signup) -->
+      <div class="editor-card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
+        <div style="padding:20px 20px 12px;border-bottom:1px solid var(--border);">
+          <div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--fg-muted);">Tier 1</div>
+          <div style="font-size:18px;font-weight:700;margin-top:4px;">Anonymous</div>
+          <div style="font-size:32px;font-weight:700;letter-spacing:-0.02em;margin-top:8px;color:var(--fg);">Free<span style="font-size:13px;color:var(--fg-muted);font-weight:400;"> / no signup</span></div>
+          <p style="font-size:12px;color:var(--fg-muted);margin-top:6px;">For quick throwaway demos.</p>
+        </div>
+        <div style="padding:14px 20px;flex:1;">
+          <div style="font-size:11px;color:var(--fg-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">What you get</div>
+          <ul style="list-style:none;padding:0;margin:0;font-size:13px;line-height:1.9;color:var(--fg-secondary);">
+            <li><span style="color:#22c55e;">✓</span> Paste HTML → live link</li>
+            <li><span style="color:#22c55e;">✓</span> 1-day TTL (auto-expiry)</li>
+            <li><span style="color:#22c55e;">✓</span> 3 AI edits / day / browser</li>
+            <li><span style="color:#22c55e;">✓</span> Image upload (Cloudinary)</li>
+            <li><span style="color:#22c55e;">✓</span> Download HTML from box</li>
+            <li><span style="color:#22c55e;">✓</span> Browse + preview templates</li>
+          </ul>
+        </div>
+        <div style="padding:14px 20px;border-top:1px solid var(--border);">
+          <button class="btn btn-ghost btn-block btn-sm" onclick="switchView('new')">Start now →</button>
+        </div>
+      </div>
+
+      <!-- Tier 2: Free signed in -->
+      <div class="editor-card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;border:1px solid var(--purple);">
+        <div style="padding:20px 20px 12px;border-bottom:1px solid var(--border);">
+          <div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--purple-text);">Tier 2</div>
+          <div style="font-size:18px;font-weight:700;margin-top:4px;">Free account</div>
+          <div style="font-size:32px;font-weight:700;letter-spacing:-0.02em;margin-top:8px;color:var(--purple-text);">Free<span style="font-size:13px;color:var(--fg-muted);font-weight:400;"> / signup</span></div>
+          <p style="font-size:12px;color:var(--fg-muted);margin-top:6px;">Sign in with Google, GitHub, or email.</p>
+        </div>
+        <div style="padding:14px 20px;flex:1;">
+          <div style="font-size:11px;color:var(--fg-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Everything in Anonymous, plus</div>
+          <ul style="list-style:none;padding:0;margin:0;font-size:13px;line-height:1.9;color:var(--fg-secondary);">
+            <li><span style="color:#22c55e;">✓</span> 7-day TTL also available</li>
+            <li><span style="color:#22c55e;">✓</span> My Sites dashboard (cross-browser)</li>
+            <li><span style="color:#22c55e;">✓</span> Clipboard (last 10 pastes)</li>
+            <li><span style="color:#22c55e;">✓</span> 10 AI edits / day (up from 3)</li>
+            <li><span style="color:#22c55e;">✓</span> Use any template (load into editor)</li>
+            <li><span style="color:#22c55e;">✓</span> Bring-Your-Own-Key for unlimited AI</li>
+          </ul>
+        </div>
+        <div style="padding:14px 20px;border-top:1px solid var(--border);">
+          <button class="btn btn-purple btn-block btn-sm" onclick="document.getElementById('signin-modal').classList.remove('hidden')">Sign in free →</button>
+        </div>
+      </div>
+
+      <!-- Tier 3: Pro -->
+      <div class="editor-card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;border:2px solid #f59e0b;position:relative;box-shadow:0 8px 24px -6px rgba(245,158,11,0.25);">
+        <div style="position:absolute;top:-1px;left:50%;transform:translateX(-50%);background:#f59e0b;color:#000;font-size:11px;font-weight:600;padding:3px 12px;border-radius:0 0 8px 8px;letter-spacing:0.06em;text-transform:uppercase;">Most popular</div>
+        <div style="padding:20px 20px 12px;border-bottom:1px solid var(--border);margin-top:14px;">
+          <div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#f59e0b;">Tier 3</div>
+          <div style="font-size:18px;font-weight:700;margin-top:4px;">Pro</div>
+          <div style="font-size:32px;font-weight:700;letter-spacing:-0.02em;margin-top:8px;color:#f59e0b;">₦10,000<span style="font-size:13px;color:var(--fg-muted);font-weight:400;"> / 2 months</span></div>
+          <p style="font-size:12px;color:var(--fg-muted);margin-top:6px;">For power users & teams. Pro badge on your account.</p>
+        </div>
+        <div style="padding:14px 20px;flex:1;">
+          <div style="font-size:11px;color:var(--fg-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Everything in Free, plus</div>
+          <ul style="list-style:none;padding:0;margin:0;font-size:13px;line-height:1.9;color:var(--fg-secondary);">
+            <li><span style="color:#f59e0b;">★</span> <strong>30-day TTL</strong></li>
+            <li><span style="color:#f59e0b;">★</span> <strong>Never-expiring sites</strong></li>
+            <li><span style="color:#f59e0b;">★</span> <strong>Clone from URL</strong> — fetch any page</li>
+            <li><span style="color:#f59e0b;">★</span> Unlimited free AI edits (no daily cap)</li>
+            <li><span style="color:#f59e0b;">★</span> Priority AI model (faster responses)</li>
+            <li><span style="color:#f59e0b;">★</span> Pro Templates (premium presets)</li>
+          </ul>
+        </div>
+        <div style="padding:14px 20px;border-top:1px solid var(--border);">
+          <button class="btn btn-block btn-sm" style="background:#f59e0b;color:#000;font-weight:700;border:none;" onclick="window.location.href='mailto:kayhost@admin.com?subject=Pro%20upgrade%20request&body=I%20want%20to%20upgrade%20to%20Pro%20for%20₦10%2C000%2F2%20months.'">Upgrade to Pro →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== How Pro works ===== -->
+    <div class="editor-card" style="margin-bottom:16px;">
+      <h3 style="font-size:16px;margin-bottom:10px;">How Pro works</h3>
+      <ol style="padding-left:18px;font-size:14px;color:var(--fg-secondary);line-height:1.7;">
+        <li>Pay <strong>₦10,000</strong> for 2 months — email <a href="mailto:kayhost@admin.com" style="color:var(--purple-text);">kayhost@admin.com</a> or tap any "Upgrade" button.</li>
+        <li>Admin marks your account as <strong>Pro</strong> from the dashboard (you'll see a Pro badge next to your name in the top-right).</li>
+        <li>Sign out and sign back in — all Pro features unlock automatically: 30-day &amp; Never TTL, Clone from URL, unlimited AI edits.</li>
+      </ol>
+      <p style="font-size:13px;color:var(--fg-muted);margin-top:12px;line-height:1.6;">If you ever hit a Pro-gated feature without Pro, you'll see a small upgrade card explaining what you get. No surprise paywalls — every Pro feature is also usable in a limited form on Free.</p>
+    </div>
+
+    <!-- ===== FAQ ===== -->
+    <div class="editor-card">
+      <h3 style="font-size:16px;margin-bottom:10px;">Common questions</h3>
+      <details style="margin-bottom:8px;">
+        <summary style="cursor:pointer;font-size:14px;color:var(--fg);padding:6px 0;">Can I use Kayhost without paying anything?</summary>
+        <p style="font-size:13px;color:var(--fg-secondary);padding:6px 0 6px 14px;line-height:1.6;">Yes. Paste HTML, get a link — totally free. Sign in for free to get 7-day TTL and 10 AI edits/day. You only need Pro if you want sites to never expire, or to clone URLs.</p>
+      </details>
+      <details style="margin-bottom:8px;">
+        <summary style="cursor:pointer;font-size:14px;color:var(--fg);padding:6px 0;">What happens to my sites when Pro expires?</summary>
+        <p style="font-size:13px;color:var(--fg-secondary);padding:6px 0 6px 14px;line-height:1.6;">Your sites stay live — we never delete content without warning. New deploys will use Free-tier TTLs (1-day or 7-day if signed in). Email <a href="mailto:kayhost@admin.com" style="color:var(--purple-text);">kayhost@admin.com</a> to renew.</p>
+      </details>
+      <details style="margin-bottom:8px;">
+        <summary style="cursor:pointer;font-size:14px;color:var(--fg);padding:6px 0;">Do I need to share my AI key?</summary>
+        <p style="font-size:13px;color:var(--fg-secondary);padding:6px 0 6px 14px;line-height:1.6;">No. Free AI edits use Kayhost's shared Gemini key (limited per day). To go unlimited without Pro, paste your own OpenAI, Anthropic, or Gemini key in Settings → AI API Keys — it's stored in your browser only, never sent to our server.</p>
+      </details>
+      <details>
+        <summary style="cursor:pointer;font-size:14px;color:var(--fg);padding:6px 0;">Can I download the HTML I edited?</summary>
+        <p style="font-size:13px;color:var(--fg-secondary);padding:6px 0 6px 14px;line-height:1.6;">Yes — anyone, on any tier, can download whatever's in the paste box as a <code style="background:var(--bg-elevated);padding:1px 4px;border-radius:3px;font-size:12px;">.html</code> file. The Download button sits next to Deploy in the editor. Works after pasting, after AI edit, after Clone from URL, after loading any template.</p>
+      </details>
+    </div>
   </main>
 
   <main id="view-privacy" class="container dashboard-view" style="padding-top: 32px; display: none;">
@@ -1104,6 +1221,7 @@
       "clipboard": "/clipboard",
       "tools": "/tools",
       "settings": "/settings",
+      "pricing": "/pricing",
       "admin": "/admin",
     };
     function pathToView(path) {
@@ -1154,7 +1272,7 @@
         }
       }
       // Update document title
-      const titles = { new:"Kayhost HTML", sites:"My Sites — Kayhost", templates:"Templates — Kayhost", clipboard:"Clipboard — Kayhost", tools:"Tools — Kayhost", settings:"Settings — Kayhost", admin:"Admin — Kayhost" };
+      const titles = { new:"Kayhost HTML", sites:"My Sites — Kayhost", templates:"Templates — Kayhost", clipboard:"Clipboard — Kayhost", tools:"Tools — Kayhost", settings:"Settings — Kayhost", pricing:"Pricing — Kayhost", admin:"Admin — Kayhost" };
       document.title = titles[view] || "Kayhost HTML";
       // Load data if needed
       if (view === "sites") loadSites();
@@ -1744,6 +1862,34 @@ Return ONLY the raw HTML:`;
     window.closeProUpgrade = function() {
       const modal = document.getElementById("pro-upgrade-modal");
       if (modal) modal.classList.add("hidden");
+    };
+
+    // Download whatever HTML is currently in the paste-box as a .html file.
+    // Always available (no Pro gating) — your own HTML, your own download.
+    // Works after paste, after Clone from URL, after AI edit, after template load — anything in the box.
+    window.downloadCurrentHtml = function() {
+      const ta = document.getElementById("html-input");
+      const html = (ta && ta.value || "").trim();
+      if (!html) { toast("Nothing to download — paste some HTML first", "error"); return; }
+      const titleInput = document.getElementById("title-input");
+      const rawTitle = (titleInput && titleInput.value || "kayhost-page").trim() || "kayhost-page";
+      // Slugify the title for the filename
+      const slug = rawTitle.toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 60) || "kayhost-page";
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = slug + ".html";
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Give the browser a tick before releasing the object URL
+      setTimeout(function() { URL.revokeObjectURL(url); }, 1500);
+      toast("Downloaded " + slug + ".html", "success");
     };
     async function doClone() {
       const url = document.getElementById("clone-url").value.trim();
@@ -2689,7 +2835,16 @@ Return ONLY the raw HTML:`;
     function renderUsers(content, data) {
       const users = data.users || [];
       if (!users.length) { content.innerHTML = '<div class="empty-state"><h3>No users yet</h3><p>When users sign in with Google, GitHub, or email, they\'ll appear here.</p></div>'; return; }
-      content.innerHTML = '<div class="table-wrap" style="overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);">' +
+      content.innerHTML =
+        '<div class="editor-card" style="margin-bottom:12px;padding:12px 14px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.25);">' +
+          '<p style="font-size:13px;color:var(--fg-secondary);line-height:1.5;margin:0;">' +
+            '<strong style="color:#f59e0b;">How Pro works:</strong> Click <em>Make Pro</em> next to any user to mark them as Pro. The change is saved to Firestore instantly. ' +
+            'When the user <strong>refreshes the page or signs out and back in</strong>, all Pro features unlock automatically — they\'ll see the Pro badge next to their name and get access to 30-day &amp; Never TTL, Clone from URL, and unlimited AI edits. ' +
+            'Click <em>Remove Pro</em> to revoke — same flow, the user loses Pro on next sign-in. ' +
+            'Tip: if the user is signed in on multiple browsers, the change syncs across all of them on next page load.' +
+          '</p>' +
+        '</div>' +
+        '<div class="table-wrap" style="overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);">' +
         '<table style="width:100%;border-collapse:collapse;font-size:13px;min-width:600px;">' +
         '<thead><tr style="border-bottom:1px solid var(--border);">' +
         '<th style="padding:10px;text-align:left;font-weight:600;">User</th>' +
