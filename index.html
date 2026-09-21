@@ -619,8 +619,28 @@
           <div style="font-size:12px;color:var(--fg-muted);margin-top:4px;">Never-expiring sites · Clone any URL · 30-day TTL · Priority AI</div>
         </div>
         <div style="display:flex;gap:8px;flex-direction:column;">
-          <button class="btn btn-block" style="background:#CCFF00;color:#000;font-weight:700;border:none;padding:12px;" onclick="window.location.href='mailto:kayhost@admin.com?subject=Pro%20upgrade%20request&body=I%20want%20to%20upgrade%20to%20Pro%20for%20₦10%2C000%2F2%20months.'">Upgrade account</button>
+          <button class="btn btn-block" style="background:#CCFF00;color:#000;font-weight:700;border:none;padding:12px;display:flex;align-items:center;justify-content:center;gap:8px;" onclick="startProUpgrade()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15 9 22 9 17 14 19 22 12 18 5 22 7 14 2 9 9 9"/></svg>
+            Pay ₦10,000 with Paystack
+          </button>
           <a href="#" onclick="event.preventDefault(); closeProUpgrade(); switchView('pricing');" style="color:var(--fg-muted);font-size:13px;text-decoration:underline;margin-top:4px;">See Pro benefits</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Payment status modal (shown after Paystack popup closes) ===== -->
+    <div id="paystack-status-modal" class="hidden" style="position:fixed;inset:0;z-index:310;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this) closePaystackStatus()">
+      <div class="editor-card" style="max-width:420px;width:100%;padding:28px 24px;text-align:center;position:relative;">
+        <button onclick="closePaystackStatus()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--fg-secondary);cursor:pointer;display:grid;place-items:center;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <div id="paystack-status-icon" style="width:48px;height:48px;border-radius:50%;background:rgba(167,139,250,0.12);color:var(--purple-text);display:grid;place-items:center;margin:0 auto 14px;">
+          <div class="spinner" style="margin:0;"></div>
+        </div>
+        <h3 id="paystack-status-title" style="font-size:18px;font-weight:700;margin-bottom:6px;">Verifying payment…</h3>
+        <p id="paystack-status-desc" style="color:var(--fg-secondary);font-size:14px;line-height:1.5;margin-bottom:18px;">Hang on while we confirm your payment with Paystack.</p>
+        <div id="paystack-status-actions" style="display:none;gap:8px;flex-direction:column;">
+          <button class="btn btn-block" id="paystack-status-primary" onclick="closePaystackStatus()">Continue</button>
         </div>
       </div>
     </div>
@@ -1021,7 +1041,7 @@
           </ul>
         </div>
         <div style="padding:14px 20px;border-top:1px solid var(--border);">
-          <button class="btn btn-block btn-sm" style="background:#f59e0b;color:#000;font-weight:700;border:none;" onclick="window.location.href='mailto:kayhost@admin.com?subject=Pro%20upgrade%20request&body=I%20want%20to%20upgrade%20to%20Pro%20for%20₦10%2C000%2F2%20months.'">Upgrade to Pro →</button>
+          <button class="btn btn-block btn-sm" style="background:#f59e0b;color:#000;font-weight:700;border:none;" onclick="if(window.kayhostUserPro){toast('You\\'re already Pro','info');}else{startProUpgrade();}">Upgrade to Pro →</button>
         </div>
       </div>
     </div>
@@ -1030,11 +1050,12 @@
     <div class="editor-card" style="margin-bottom:16px;">
       <h3 style="font-size:16px;margin-bottom:10px;">How Pro works</h3>
       <ol style="padding-left:18px;font-size:14px;color:var(--fg-secondary);line-height:1.7;">
-        <li>Pay <strong>₦10,000</strong> for 2 months — email <a href="mailto:kayhost@admin.com" style="color:var(--purple-text);">kayhost@admin.com</a> or tap any "Upgrade" button.</li>
-        <li>Admin marks your account as <strong>Pro</strong> from the dashboard (you'll see a Pro badge next to your name in the top-right).</li>
-        <li>Sign out and sign back in — all Pro features unlock automatically: 30-day &amp; Never TTL, Clone from URL, unlimited AI edits.</li>
+        <li>Sign in with Google, GitHub, or email — required so we know which account to mark as Pro.</li>
+        <li>Click <strong>"Pay ₦10,000 with Paystack"</strong> — Paystack's secure popup opens, you pay with card or bank transfer.</li>
+        <li>We verify the payment server-side (with Paystack directly — no manual check). The moment it's confirmed, your account is marked Pro.</li>
+        <li>Refresh the page — all Pro features unlock: 30-day &amp; Never TTL, Clone from URL, unlimited AI edits. Pro badge appears next to your name.</li>
       </ol>
-      <p style="font-size:13px;color:var(--fg-muted);margin-top:12px;line-height:1.6;">If you ever hit a Pro-gated feature without Pro, you'll see a small upgrade card explaining what you get. No surprise paywalls — every Pro feature is also usable in a limited form on Free.</p>
+      <p style="font-size:13px;color:var(--fg-muted);margin-top:12px;line-height:1.6;">If you ever hit a Pro-gated feature without Pro, you'll see a small upgrade card explaining what you get. Payments are processed by Paystack — we never see or store your card details.</p>
     </div>
 
     <!-- ===== FAQ ===== -->
@@ -3182,6 +3203,150 @@ Return ONLY the raw HTML:`;
           injectEmbedCode(HARDCODED_TAWK);
         });
     })();
+  </script>
+
+  <!-- ===== Paystack inline checkout script (safe to load — public key only) ===== -->
+  <script src="https://js.paystack.co/v1/inline.js"></script>
+
+  <!-- ===== Paystack payment flow for Pro upgrade ===== -->
+  <script>
+    // Paystack PUBLIC key — safe to embed in client code (this is by design).
+    // The secret key is server-side only (PAYSTACK_SECRET_KEY env var on Vercel).
+    const PAYSTACK_PUBLIC_KEY = "pk_live_e3db548fc8e32b6b1ce3f4dc87f368ed48934d54";
+    const PRO_AMOUNT_KOBO = 1000000; // ₦10,000 × 100 kobo
+
+    // Open the Paystack payment popup with the signed-in user's email pre-filled.
+    // Called from the "Pay ₦10,000 with Paystack" button in the Pro upgrade modal,
+    // and from the "Upgrade to Pro" button on the /pricing page.
+    window.startProUpgrade = function() {
+      // Need a signed-in user — can't pay anonymously
+      const u = window.currentUser || null;
+      if (!u || !u.email) {
+        // Close the Pro upgrade modal first, then prompt sign-in
+        closeProUpgrade();
+        document.getElementById("signin-modal").classList.remove("hidden");
+        toast("Sign in first to upgrade to Pro", "info");
+        return;
+      }
+
+      // Generate a unique payment reference (Paystack requires one)
+      const reference = "kay-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+
+      // Verify Paystackinline is loaded
+      if (typeof PaystackPop === "undefined") {
+        toast("Couldn't load Paystack. Check your internet and try again.", "error");
+        return;
+      }
+
+      // Close the Pro upgrade modal so the Paystack popup is visible
+      closeProUpgrade();
+
+      // Open the Paystack inline popup
+      const handler = PaystackPop.setup({
+        key: PAYSTACK_PUBLIC_KEY,
+        email: u.email,
+        amount: PRO_AMOUNT_KOBO, // in kobo
+        currency: "NGN",
+        ref: reference,
+        metadata: {
+          custom_fields: [
+            { display_name: "Account", variable_name: "account_email", value: u.email },
+            { display_name: "Plan", variable_name: "plan", value: "Pro — 2 months" },
+          ]
+        },
+        callback: function(response) {
+          // Payment popup closed — Paystack says it paid (but we verify server-side)
+          verifyPaystackPayment(response.reference, u.email);
+        },
+        onClose: function() {
+          // User closed the popup without completing payment
+          // Don't show any UI — they just cancelled
+          console.log("[paystack] User closed popup without completing payment.");
+        }
+      });
+      handler.openIframe();
+    };
+
+    // Server-side verify the payment, then mark the user as Pro
+    async function verifyPaystackPayment(reference, userEmail) {
+      // Show the "verifying…" status modal
+      const modal = document.getElementById("paystack-status-modal");
+      const icon = document.getElementById("paystack-status-icon");
+      const title = document.getElementById("paystack-status-title");
+      const desc = document.getElementById("paystack-status-desc");
+      const actions = document.getElementById("paystack-status-actions");
+      const primaryBtn = document.getElementById("paystack-status-primary");
+      if (!modal) return;
+
+      // Reset to loading state
+      icon.style.background = "rgba(167,139,250,0.12)";
+      icon.style.color = "var(--purple-text)";
+      icon.innerHTML = '<div class="spinner" style="margin:0;"></div>';
+      title.textContent = "Verifying payment…";
+      desc.textContent = "Hang on while we confirm your payment with Paystack.";
+      actions.style.display = "none";
+      modal.classList.remove("hidden");
+
+      try {
+        const res = await fetch("/api/paystack/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reference, email: userEmail }),
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          // SUCCESS — show green check, instruct user to refresh
+          icon.style.background = "rgba(34,197,94,0.15)";
+          icon.style.color = "#22c55e";
+          icon.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+          title.textContent = "You're Pro now! 🎉";
+          desc.textContent = "Payment confirmed. Your account is now Pro. Refresh the page to access all Pro features (30-day & Never TTL, Clone from URL, unlimited AI edits).";
+          primaryBtn.textContent = "Refresh now";
+          primaryBtn.style.background = "#22c55e";
+          primaryBtn.style.color = "#fff";
+          primaryBtn.style.fontWeight = "700";
+          primaryBtn.style.border = "none";
+          primaryBtn.onclick = function() { window.location.reload(); };
+          actions.style.display = "flex";
+
+          // Pre-emptively set the flag so the user sees Pro immediately on next click
+          window.kayhostUserPro = true;
+
+          toast("Pro activated!", "success");
+        } else {
+          // FAILED — show error
+          icon.style.background = "rgba(239,68,68,0.12)";
+          icon.style.color = "#ef4444";
+          icon.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+          title.textContent = "Payment not verified";
+          desc.textContent = data.error || "We couldn't verify your payment. If you were charged, email kayhost@admin.com with your payment reference (" + reference + ").";
+          primaryBtn.textContent = "Close";
+          primaryBtn.style.background = "";
+          primaryBtn.style.color = "";
+          primaryBtn.style.fontWeight = "";
+          primaryBtn.onclick = function() { closePaystackStatus(); };
+          actions.style.display = "flex";
+          toast("Payment verification failed", "error");
+        }
+      } catch (err) {
+        // NETWORK ERROR — show retry
+        icon.style.background = "rgba(239,68,68,0.12)";
+        icon.style.color = "#ef4444";
+        icon.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+        title.textContent = "Connection error";
+        desc.textContent = "We couldn't reach the server to verify your payment. If you were charged, email kayhost@admin.com with reference " + reference + ".";
+        primaryBtn.textContent = "Try again";
+        primaryBtn.onclick = function() { verifyPaystackPayment(reference, userEmail); };
+        actions.style.display = "flex";
+        toast("Connection error. Try again.", "error");
+      }
+    }
+
+    window.closePaystackStatus = function() {
+      const modal = document.getElementById("paystack-status-modal");
+      if (modal) modal.classList.add("hidden");
+    };
   </script>
 </body>
 </html>

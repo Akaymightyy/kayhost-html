@@ -36,6 +36,7 @@
     { "source": "/api/save-user", "destination": "/api/save-user.js" },
     { "source": "/api/settings", "destination": "/api/settings.js" },
     { "source": "/api/user-profile", "destination": "/api/user-profile.js" },
+    { "source": "/api/paystack/verify", "destination": "/api/paystack-verify.js" },
     { "source": "/site/:id", "destination": "/api/site/[id].js" },
     { "source": "/__/auth/:catch*", "destination": "/index.html" },
     { "source": "/admin", "destination": "/index.html" },
