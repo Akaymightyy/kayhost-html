@@ -1,4 +1,29 @@
 {
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy", "value": "geolocation=(), microphone=(), camera=(), payment=(), accelerometer=(), gyroscope=()" },
+        { "key": "X-Robots-Tag", "value": "index, follow" },
+        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" }
+      ]
+    },
+    {
+      "source": "/admin(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    }
+  ],
   "rewrites": [
     { "source": "/api/deploy", "destination": "/api/deploy.js" },
     { "source": "/api/sites", "destination": "/api/sites.js" },
@@ -7,11 +32,13 @@
     { "source": "/api/admin", "destination": "/api/admin.js" },
     { "source": "/api/clone", "destination": "/api/clone.js" },
     { "source": "/api/signin", "destination": "/api/signin.js" },
+    { "source": "/api/signup", "destination": "/api/signup.js" },
     { "source": "/api/save-user", "destination": "/api/save-user.js" },
     { "source": "/api/settings", "destination": "/api/settings.js" },
+    { "source": "/api/user-profile", "destination": "/api/user-profile.js" },
     { "source": "/site/:id", "destination": "/api/site/[id].js" },
     { "source": "/__/auth/:catch*", "destination": "/index.html" },
     { "source": "/admin", "destination": "/index.html" },
-    { "source": "/((?!api|site|_next|sw.js|manifest.json|icon|favicon|apple|robots|svarna-template|__).*)", "destination": "/index.html" }
+    { "source": "/((?!api|site|_next|sw.js|manifest.json|icon|favicon|apple|robots|svarna-template|middleware.js|__).*)", "destination": "/index.html" }
   ]
 }

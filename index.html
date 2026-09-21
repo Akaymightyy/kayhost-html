@@ -2396,8 +2396,8 @@ Return ONLY the raw HTML:`;
 
     // Sync the current user's profile + Pro status to window so the classic script
     // (which can't see this module's `let currentUser` variable) can do Pro gating.
-    // Fetches /api/admin?section=users in the background and finds the user by email
-    // to read the `pro` flag (admin-marked via the Users tab).
+    // Fetches the user's OWN profile (one user, by email) via /api/user-profile —
+    // NOT the full user list (which is now admin-only).
     async function syncUserToWindow(user, isAdmin) {
       window.currentUser = user || null;
       window.userIsAdmin = !!isAdmin;
@@ -2408,16 +2408,13 @@ Return ONLY the raw HTML:`;
       // Default to false until the fetch completes
       window.kayhostUserPro = window.kayhostUserPro || false;
       try {
-        const res = await fetch("/api/admin?section=users");
+        const url = "/api/user-profile?email=" + encodeURIComponent(user.email.toLowerCase());
+        const res = await fetch(url, { cache: "no-store" });
         if (!res.ok) return;
         const data = await res.json();
-        const users = (data && data.users) || [];
-        const me = users.find(u => (u.email || "").toLowerCase() === (user.email || "").toLowerCase());
+        const me = data && data.user;
         if (me) {
           window.kayhostUserPro = !!me.pro;
-          if (me._duplicateUids && me._duplicateUids.length) {
-            window.currentUserDuplicateUids = me._duplicateUids;
-          }
         }
       } catch (e) {
         console.warn("[auth] Couldn't fetch user Pro status:", e.message);
@@ -2657,24 +2654,49 @@ Return ONLY the raw HTML:`;
 
     // --- Triple-click admin access check ---
     // Called when user triple-clicks the logo. Only way to access admin.
+    // SECURITY: Server-side token verification is the real gate — triple-click
+    // is just a UX hint. If you're not signed in, you can't even open the modal.
     window.checkAdminAccess = async function() {
       if (!currentUser) {
-        // Not signed in → open sign-in modal
         document.getElementById("signin-modal").classList.remove("hidden");
-        toast("Sign in to access admin", "info");
+        toast("Sign in with an admin account to access the dashboard", "info");
         return;
       }
-      if (userIsAdmin) {
-        // Already verified as admin → show dashboard
-        switchView("admin");
-        loadAdminData("overview");
-        toast("Admin access granted", "success");
-      } else {
-        // Signed in but not admin → redirect home (no error page)
-        toast("Not authorized", "error");
+      if (!userIsAdmin) {
+        toast("This account doesn't have admin access", "error");
         switchView("new");
+        return;
       }
+      // Verify the server actually recognizes us as admin (real check, not just client)
+      try {
+        const idToken = await getIdTokenForAdmin();
+        if (!idToken) {
+          // Likely signed in via localStorage only (REST API path) — server can't
+          // verify a token we don't have. Show admin dashboard anyway (the
+          // loadAdminData call will hit a 403 if the server rejects, and show the
+          // "Not authorized" empty state).
+          toast("Signed in — opening admin dashboard", "info");
+        } else {
+          toast("Admin access granted", "success");
+        }
+      } catch (e) {
+        toast("Couldn't verify admin session — try signing out and back in", "error");
+      }
+      switchView("admin");
+      loadAdminData("overview");
     };
+
+    // Get the current user's Firebase ID token (for Authorization: Bearer header).
+    // Returns null if we can't get one (e.g. signed in via REST API without SDK).
+    async function getIdTokenForAdmin() {
+      try {
+        if (typeof auth !== "undefined" && auth && auth.currentUser) {
+          return await auth.currentUser.getIdToken(true);
+        }
+      } catch (e) {}
+      return null;
+    }
+    window.getIdTokenForAdmin = getIdTokenForAdmin;
 
     // --- Admin dashboard ---
     window.switchAdminTab = function(tab) {
@@ -2688,11 +2710,13 @@ Return ONLY the raw HTML:`;
       if (!content) return;
       content.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
       try {
-        const uid = currentUser?.uid || "anon";
-        const email = currentUser?.email || "anon";
-        const res = await fetch(`/api/admin?section=${section}&uid=${uid}&email=${encodeURIComponent(email)}`);
+        // Get a fresh ID token for server-side verification
+        const idToken = await getIdTokenForAdmin();
+        const headers = {};
+        if (idToken) headers["Authorization"] = "Bearer " + idToken;
+        const res = await fetch(`/api/admin?section=${section}`, { headers });
         if (res.status === 403) {
-          content.innerHTML = '<div class="empty-state"><h3>Not authorized</h3><p>You need admin access to view this page.</p></div>';
+          content.innerHTML = '<div class="empty-state"><h3>Not authorized</h3><p>You need admin access to view this page. If you just signed in, sign out and back in to refresh your session token.</p><button class="btn btn-ghost btn-sm" style="margin-top:12px;" onclick="doSignOut()">Sign out</button></div>';
           return;
         }
         if (!res.ok) {
@@ -3000,7 +3024,7 @@ Return ONLY the raw HTML:`;
     window.adminAction = async function(action, targetId, arg3, duplicateUids) {
       if (action !== "addTemplate" && !confirm(action + " on " + (arg3 || targetId) + "?")) return;
       try {
-        const body = { action, targetId, uid: currentUser?.uid, email: currentUser?.email };
+        const body = { action, targetId };
         if (action === "suspendUser" || action === "setPro") {
           body.newStatus = arg3 || "";
           if (Array.isArray(duplicateUids) && duplicateUids.length) body.duplicateUids = duplicateUids;
@@ -3008,15 +3032,20 @@ Return ONLY the raw HTML:`;
           body.adminEmail = arg3 || "";
           if (Array.isArray(duplicateUids) && duplicateUids.length) body.duplicateUids = duplicateUids;
         }
+        const idToken = await getIdTokenForAdmin();
+        const headers = { "Content-Type": "application/json" };
+        if (idToken) headers["Authorization"] = "Bearer " + idToken;
         const res = await fetch("/api/admin", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error("Action failed");
+        if (!res.ok) {
+          if (res.status === 403) throw new Error("Not authorized — sign out and back in to refresh your admin token.");
+          throw new Error("Action failed");
+        }
         const result = await res.json().catch(() => ({}));
         toast("Action completed" + (result.appliedTo ? " (applied to " + result.appliedTo + " account" + (result.appliedTo === 1 ? "" : "s") + ")" : ""), "success");
-        // Reload current tab
         const activeTab = document.querySelector("#admin-tabs .active");
         if (activeTab) loadAdminData(activeTab.textContent.toLowerCase().replace(" ", "").replace("auditlog", "audit"));
       } catch (err) { toast(err.message, "error"); }
@@ -3027,12 +3056,18 @@ Return ONLY the raw HTML:`;
       const html = document.getElementById("tpl-html")?.value || "";
       if (!html) { toast("Paste some HTML first", "error"); return; }
       try {
+        const idToken = await getIdTokenForAdmin();
+        const headers = { "Content-Type": "application/json" };
+        if (idToken) headers["Authorization"] = "Bearer " + idToken;
         const res = await fetch("/api/admin", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "addTemplate", templateName: name, templateHtml: html, uid: currentUser?.uid, email: currentUser?.email }),
+          headers,
+          body: JSON.stringify({ action: "addTemplate", templateName: name, templateHtml: html }),
         });
-        if (!res.ok) throw new Error("Save failed");
+        if (!res.ok) {
+          if (res.status === 403) throw new Error("Not authorized — sign out and back in to refresh your admin token.");
+          throw new Error("Save failed");
+        }
         toast("Template saved!", "success");
         loadAdminData("templates");
       } catch (err) { toast(err.message, "error"); }
@@ -3040,11 +3075,15 @@ Return ONLY the raw HTML:`;
 
     window.updateSetting = async function(key, value) {
       try {
-        await fetch("/api/admin", {
+        const idToken = await getIdTokenForAdmin();
+        const headers = { "Content-Type": "application/json" };
+        if (idToken) headers["Authorization"] = "Bearer " + idToken;
+        const res = await fetch("/api/admin", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "updateSettings", settings: { [key]: value }, uid: currentUser?.uid, email: currentUser?.email }),
+          headers,
+          body: JSON.stringify({ action: "updateSettings", settings: { [key]: value } }),
         });
+        if (!res.ok) throw new Error("Save failed");
         toast("Setting updated", "success");
       } catch (err) { toast(err.message, "error"); }
     };
