@@ -13,7 +13,7 @@
 //   - deleteSite, extendTtl, suspendUser, setPro, promoteAdmin, demoteAdmin,
 //     addTemplate, deleteTemplate, updateSettings
 
-const { getDb } = require("./_firebase");
+const { getDb } = require("../lib/firebase");
 const { collection, getDocs, doc, getDoc, setDoc, deleteDoc, updateDoc } = require("firebase/firestore");
 
 const ADMIN_EMAILS = ["awwalabdul891@gmail.com", "kayhost@admin.com"].map(e => e.toLowerCase());
@@ -24,9 +24,9 @@ const ADMIN_EMAILS = ["awwalabdul891@gmail.com", "kayhost@admin.com"].map(e => e
 // and dump the user list.
 let _getAdmin = null;
 try {
-  _getAdmin = require("./_admin-firebase").getAdmin;
+  _getAdmin = require("../lib/admin-firebase").getAdmin;
 } catch (e) {
-  console.warn("[admin] _admin-firebase.js not available — admin endpoints will 401");
+  console.warn("[admin] lib/admin-firebase.js not available — admin endpoints will 401");
 }
 
 // Verify the request's ID token (sent as Authorization: Bearer <idToken> or ?token=)

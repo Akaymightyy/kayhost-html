@@ -5,7 +5,7 @@
 // (collection "aiUsage", doc id `${browserId}_${YYYY-MM-DD}`). BYOK edits (Claude/GPT,
 // and a user's own Gemini key) never touch this route, so they're never limited here.
 const { GoogleGenAI } = require("@google/genai");
-const { getDb } = require("./_firebase");
+const { getDb } = require("../lib/firebase");
 const { doc, getDoc, setDoc } = require("firebase/firestore");
 
 // SECURITY: GEMINI_API_KEY must be set as a Vercel env var — never hardcoded.
