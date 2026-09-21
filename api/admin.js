@@ -1,7 +1,60 @@
 // /api/admin.js — Server-side admin data endpoint
-// Admin access is gated CLIENT-SIDE via triple-click + ADMIN_EMAILS check.
+// SECURITY: Admin access is verified SERVER-SIDE via Firebase Admin SDK token
+// verification (see _admin-firebase.js). The client-side triple-click is just a UX
+// hint — the server doesn't trust it.
+//
+// Public-readable sections (no auth required):
+//   - templates:  the public templates list (shown on the /templates page)
+//   - settings:   ONLY returns chatWidget (the public chat-widget embed code);
+//                 all other settings are admin-only and stripped from the response.
+// Admin-only sections (require verified ID token whose email is in ADMIN_EMAILS):
+//   - overview, users, sites, audit, health, moderation
+// Admin-only POST actions (same auth):
+//   - deleteSite, extendTtl, suspendUser, setPro, promoteAdmin, demoteAdmin,
+//     addTemplate, deleteTemplate, updateSettings
+
 const { getDb } = require("./_firebase");
 const { collection, getDocs, doc, getDoc, setDoc, deleteDoc, updateDoc } = require("firebase/firestore");
+
+const ADMIN_EMAILS = ["awwalabdul891@gmail.com", "kayhost@admin.com"].map(e => e.toLowerCase());
+
+// Try to load the admin SDK. If FIREBASE_SERVICE_ACCOUNT_KEY isn't set, all
+// admin requests will 401 — that's intentional. Don't fall back to "trust the
+// client" — that was the original security hole that let anyone hit /api/admin
+// and dump the user list.
+let _getAdmin = null;
+try {
+  _getAdmin = require("./_admin-firebase").getAdmin;
+} catch (e) {
+  console.warn("[admin] _admin-firebase.js not available — admin endpoints will 401");
+}
+
+// Verify the request's ID token (sent as Authorization: Bearer <idToken> or ?token=)
+// and return the decoded user email. Returns null if verification fails.
+async function verifyAdmin(req) {
+  if (!_getAdmin) return null;
+  let idToken = null;
+  const authHeader = req.headers && (req.headers["authorization"] || req.headers["Authorization"]);
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    idToken = authHeader.slice(7);
+  }
+  if (!idToken) {
+    idToken = (req.query && req.query.token) || "";
+  }
+  if (!idToken) return null;
+  try {
+    const admin = _getAdmin();
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    const email = (decoded.email || "").toLowerCase();
+    if (!email) return null;
+    // Check ADMIN_EMAILS allow-list
+    if (!ADMIN_EMAILS.includes(email)) return null;
+    return { email, uid: decoded.uid };
+  } catch (e) {
+    console.warn("[admin] Token verification failed:", (e.message || "").slice(0, 100));
+    return null;
+  }
+}
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -11,13 +64,52 @@ module.exports = async (req, res) => {
 
   const section = (req.query && req.query.section) || (req.body && req.body.section) || "overview";
   const action = (req.query && req.query.action) || (req.body && req.body.action) || "";
-  const uid = (req.query && req.query.uid) || (req.body && req.body.uid) || "";
-  const email = (req.query && req.query.email) || (req.body && req.body.email) || "";
 
   let db;
   try { db = getDb(); } catch(e) {
     return res.status(200).json({ error: "Database not configured", sites: { total: 0, active: 0, expired: 0, today: 0, week: 0, month: 0 }, users: { total: 0 }, perDay: [] });
   }
+
+  // ===== Public-readable sections (no admin auth required) =====
+  // Templates are shown on the public /templates page → public read.
+  // Settings: only the chatWidget embed code is public (so the chat widget can
+  // load on every page). All other settings (feature flags, etc.) are admin-only.
+  if (req.method === "GET" && (section === "templates" || section === "settings")) {
+    try {
+      if (section === "templates") {
+        const templatesSnap = await getDocs(collection(db, "templates"));
+        const templates = [];
+        templatesSnap.forEach(d => templates.push({ id: d.id, ...d.data() }));
+        return res.status(200).json({ templates });
+      }
+      if (section === "settings") {
+        // Only return the chatWidget field — everything else is admin-only
+        let chatWidget = "";
+        try {
+          const snap = await getDoc(doc(db, "settings", "chatWidget"));
+          if (snap.exists()) {
+            const data = snap.data() || {};
+            chatWidget = typeof data.value === "string" ? data.value : "";
+          }
+        } catch (e) {}
+        return res.status(200).json({ settings: { chatWidget: { value: chatWidget } } });
+      }
+    } catch (e) {
+      return res.status(200).json({ templates: [], settings: { chatWidget: { value: "" } } });
+    }
+  }
+
+  // ===== Everything below requires admin auth =====
+  const adminUser = await verifyAdmin(req);
+  if (!adminUser) {
+    return res.status(403).json({
+      error: "Not authorized. Admin access requires a verified ID token from an admin account.",
+    });
+  }
+
+  // Bump uid/email with the verified values (don't trust the client)
+  const uid = adminUser.uid;
+  const email = adminUser.email;
 
   try {
     // ===== GET: Fetch admin dashboard data =====

@@ -8,7 +8,11 @@ const { GoogleGenAI } = require("@google/genai");
 const { getDb } = require("./_firebase");
 const { doc, getDoc, setDoc } = require("firebase/firestore");
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "AQ.Ab8RN6LjZ6Jn2oiBrQj6GkkOzjJk31FqW1kZda3PkFNXjpMF8Q";
+// SECURITY: GEMINI_API_KEY must be set as a Vercel env var — never hardcoded.
+// The previous hardcoded fallback was exposed when the site was mirrored with
+// `wget --mirror` and the bundled function source leaked. Now there's NO
+// fallback — if the env var is missing, the function returns a clear error.
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const FREE_DAILY_LIMIT = 10;
 
 module.exports = async (req, res) => {
