@@ -56,11 +56,27 @@ async function verifyAdmin(req) {
   }
 }
 
+// Block scraper/bot User-Agents at the function level (since we can't use Edge
+// Middleware without Next.js). Catches wget/curl/httrack/etc. hitting the API.
+function isScraperUa(ua) {
+  if (!ua || ua.length < 20) return true;
+  const lower = ua.toLowerCase();
+  const patterns = ["wget", "curl", "httrack", "scrapy", "python-requests", "python-httpx",
+    "python-urllib", "httpclient", "mechanize", "node-fetch", "got/", "axios/",
+    "go-http-client", "okhttp", "spider", "crawler", "archive.org", "ahrefsbot",
+    "semrush", "bytespider"];
+  return patterns.some(p => lower.includes(p));
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.status(204).end();
+  // Block scrapers
+  if (isScraperUa(req.headers["user-agent"] || "")) {
+    return res.status(403).json({ error: "Automated access forbidden. Use a real browser." });
+  }
 
   const section = (req.query && req.query.section) || (req.body && req.body.section) || "overview";
   const action = (req.query && req.query.action) || (req.body && req.body.action) || "";

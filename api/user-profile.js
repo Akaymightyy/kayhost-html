@@ -14,6 +14,17 @@
 const { getDb } = require("./_firebase");
 const { doc, getDoc, query, where, getDocs, collection } = require("firebase/firestore");
 
+// Block scraper/bot User-Agents at the function level.
+function isScraperUa(ua) {
+  if (!ua || ua.length < 20) return true;
+  const lower = ua.toLowerCase();
+  const patterns = ["wget", "curl", "httrack", "scrapy", "python-requests", "python-httpx",
+    "python-urllib", "httpclient", "mechanize", "node-fetch", "got/", "axios/",
+    "go-http-client", "okhttp", "spider", "crawler", "archive.org", "ahrefsbot",
+    "semrush", "bytespider"];
+  return patterns.some(p => lower.includes(p));
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -21,6 +32,10 @@ module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   if (req.method === "OPTIONS") return res.status(204).end();
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
+  // Block scrapers
+  if (isScraperUa(req.headers["user-agent"] || "")) {
+    return res.status(403).json({ error: "Automated access forbidden." });
+  }
 
   let db;
   try { db = getDb(); } catch (e) {

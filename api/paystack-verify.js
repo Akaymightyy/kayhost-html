@@ -18,12 +18,27 @@ const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || "";
 const PRO_PRICE_KOBO = 1_000_000 * 100;  // ₦10,000 in kobo (Paystack uses kobo)
 const ADMIN_EMAILS = ["awwalabdul891@gmail.com", "kayhost@admin.com"].map(e => e.toLowerCase());
 
+// Block scraper/bot User-Agents at the function level.
+function isScraperUa(ua) {
+  if (!ua || ua.length < 20) return true;
+  const lower = ua.toLowerCase();
+  const patterns = ["wget", "curl", "httrack", "scrapy", "python-requests", "python-httpx",
+    "python-urllib", "httpclient", "mechanize", "node-fetch", "got/", "axios/",
+    "go-http-client", "okhttp", "spider", "crawler", "archive.org", "ahrefsbot",
+    "semrush", "bytespider"];
+  return patterns.some(p => lower.includes(p));
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.status(204).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  // Block scrapers
+  if (isScraperUa(req.headers["user-agent"] || "")) {
+    return res.status(403).json({ error: "Automated access forbidden." });
+  }
 
   try {
     if (!PAYSTACK_SECRET_KEY) {
