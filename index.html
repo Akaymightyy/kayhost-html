@@ -654,7 +654,15 @@
           </div>
           <div id="clone-links-list" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
         </div>
-        <textarea class="textarea" id="html-input" placeholder="Paste your HTML here..." spellcheck="false"></textarea>
+        <!-- Multi-file tabs bar (htmlhost.co style) — hidden by default; shows when
+             user uploads a folder or clicks "Add file" -->
+        <div id="file-tabs-bar" style="display:none;align-items:center;gap:2px;border:1px solid var(--border);border-bottom:0;border-radius:var(--radius) var(--radius) 0 0;padding:4px 6px;background:var(--bg-elevated);overflow-x:auto;">
+          <div id="file-tabs-list" style="display:flex;gap:2px;flex:1;"></div>
+          <button onclick="addNewFile()" title="Add new file" style="flex-shrink:0;width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--fg-secondary);cursor:pointer;display:grid;place-items:center;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+        <textarea class="textarea" id="html-input" placeholder="Paste your HTML here..." spellcheck="false" style="border-radius:var(--file-tabs-border-radius, var(--radius));"></textarea>
         <div class="editor-row">
           <div class="editor-field">
             <label>Expiry</label>
@@ -1368,13 +1376,191 @@
       const section = document.getElementById("editor-section");
       section.classList.add("visible");
       const textarea = document.getElementById("html-input");
-      if (!textarea.value) {
+      // Try to restore a saved draft first (so a refresh doesn't wipe the editor)
+      const restored = loadDraft();
+      if (restored) {
+        textarea.value = restored;
+        toast("Draft restored from last session", "info");
+      } else if (!textarea.value) {
         textarea.value = '<!DOCTYPE html>\n<html>\n<head><meta charset="utf-8"><title>My Page</title></head>\n<body>\n<h1>Hello World</h1>\n<p>Edit me with AI.</p>\n</body>\n</html>';
       }
       currentHtml = textarea.value;
-      textarea.addEventListener("input", () => { currentHtml = textarea.value; updatePreview(); });
+      // Wire up autosave: debounced localStorage write on every keystroke.
+      // Survives refresh, browser crash, accidental tab close, etc.
+      let _draftTimer = null;
+      textarea.addEventListener("input", () => {
+        currentHtml = textarea.value;
+        // Sync the active file's content into currentFiles (if multi-file mode is on)
+        if (_files.length > 0 && _activeFileIndex >= 0) {
+          _files[_activeFileIndex].content = currentHtml;
+        }
+        updatePreview();
+        clearTimeout(_draftTimer);
+        _draftTimer = setTimeout(() => saveDraft(currentHtml), 800);
+      });
+      textarea.addEventListener("change", () => saveDraft(currentHtml));
       showPreview();
       section.scrollIntoView({ behavior: "smooth" });
+    }
+
+    // ===== Multi-file editor (htmlhost.co-style tabs) =====
+    // Backwards-compatible: if `_files` has only ONE entry (the default), the
+    // file-tabs bar stays HIDDEN and the editor behaves EXACTLY as before —
+    // single textarea, single HTML blob.
+    // When the user uploads a folder OR clicks "Add file", `_files` grows and
+    // the tabs bar appears. Each tab = one file. Switching tabs swaps the
+    // textarea's content. On deploy / preview / AI edit, all files are merged
+    // into one HTML blob (CSS inlined in <style>, JS inlined in <script>).
+    let _files = [];          // [{ name: "index.html", content: "..." }, ...]
+    let _activeFileIndex = -1; // -1 means single-file mode (no tabs visible)
+
+    function renderFileTabs() {
+      const bar = document.getElementById("file-tabs-bar");
+      const list = document.getElementById("file-tabs-list");
+      if (!bar || !list) return;
+      if (_files.length <= 1) {
+        // Single-file mode — hide tabs, behave as before
+        bar.style.display = "none";
+        return;
+      }
+      bar.style.display = "flex";
+      list.innerHTML = _files.map(function(f, i) {
+        const isActive = i === _activeFileIndex;
+        const langIcon = f.name.endsWith(".css") ? "🎨"
+                      : f.name.endsWith(".js") ? "JS"
+                      : "<>";
+        return '<button onclick="switchToFile(' + i + ')" style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:6px;border:1px solid ' +
+               (isActive ? "var(--purple)" : "transparent") + ';background:' +
+               (isActive ? "rgba(167,139,250,0.12)" : "transparent") + ';color:' +
+               (isActive ? "var(--purple-text)" : "var(--fg-secondary)") +
+               ';font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;">' +
+               '<span style="opacity:0.7;font-size:10px;">' + langIcon + '</span>' +
+               '<span>' + escapeHtml(f.name) + '</span>' +
+               (_files.length > 1 ? '<span onclick="event.stopPropagation();closeFile(' + i + ')" style="margin-left:4px;color:var(--fg-muted);font-size:14px;line-height:1;">&times;</span>' : '') +
+               '</button>';
+      }).join("");
+    }
+
+    function switchToFile(index) {
+      if (index < 0 || index >= _files.length) return;
+      // Save current textarea content to the active file before switching
+      if (_activeFileIndex >= 0) {
+        _files[_activeFileIndex].content = document.getElementById("html-input").value;
+      }
+      _activeFileIndex = index;
+      const textarea = document.getElementById("html-input");
+      textarea.value = _files[index].content || "";
+      currentHtml = textarea.value;
+      renderFileTabs();
+      updatePreview();
+      saveDraft(currentHtml);
+    }
+
+    window.switchToFile = switchToFile;
+
+    function addNewFile() {
+      const name = prompt("File name (e.g. styles.css, script.js, about.html):", "new-file.js");
+      if (!name || !name.trim()) return;
+      const trimmed = name.trim();
+      // Avoid duplicate names
+      if (_files.some(f => f.name === trimmed)) {
+        toast("A file with that name already exists", "error");
+        return;
+      }
+      // If we're in single-file mode and the existing file has the default name
+      // "index.html" with default content, replace it instead of adding
+      if (_files.length === 0) {
+        // Bootstrap: create the initial file from whatever's in the textarea
+        _files = [{ name: "index.html", content: document.getElementById("html-input").value || "" }];
+      }
+      _files.push({ name: trimmed, content: "" });
+      switchToFile(_files.length - 1);
+      toast("Added " + trimmed, "success");
+    }
+    window.addNewFile = addNewFile;
+
+    function closeFile(index) {
+      if (index < 0 || index >= _files.length || _files.length <= 1) return;
+      if (!confirm("Close " + _files[index].name + "? Unsaved content in this tab will be lost.")) return;
+      _files.splice(index, 1);
+      if (_activeFileIndex >= _files.length) _activeFileIndex = _files.length - 1;
+      if (_activeFileIndex >= 0) {
+        document.getElementById("html-input").value = _files[_activeFileIndex].content || "";
+        currentHtml = document.getElementById("html-input").value;
+      }
+      renderFileTabs();
+      updatePreview();
+      saveDraft(currentHtml);
+      toast("File closed", "info");
+    }
+    window.closeFile = closeFile;
+
+    // Merge all files in `_files` into one HTML blob for deploy / preview / AI edit.
+    // The HTML file is used as the base; CSS files are inlined in <style> tags
+    // inside <head>; JS files are inlined in <script> tags before </body>.
+    // If no HTML file exists, one is synthesized.
+    function mergeFilesToHtml() {
+      // Single-file mode (most common) — just return currentHtml
+      if (_files.length <= 1) return currentHtml;
+      const htmlFile = _files.find(f => f.name.endsWith(".html") || f.name.endsWith(".htm")) || _files[0];
+      const cssFiles = _files.filter(f => f.name.endsWith(".css") && f !== htmlFile);
+      const jsFiles = _files.filter(f => f.name.endsWith(".js") && f !== htmlFile);
+      // Make sure the latest content of htmlFile is in _files
+      if (_activeFileIndex >= 0) _files[_activeFileIndex].content = document.getElementById("html-input").value;
+      let html = htmlFile.content || "";
+      // Inline CSS files: insert as <style> tags inside <head>
+      const styleTags = cssFiles.map(f => "<style>\n/* " + f.name + " */\n" + (f.content || "") + "\n</style>").join("\n");
+      if (styleTags) {
+        if (/<head[^>]*>/i.test(html)) {
+          html = html.replace(/<head([^>]*)>/i, "<head$1>\n" + styleTags);
+        } else if (/<html[^>]*>/i.test(html)) {
+          html = html.replace(/<html([^>]*)>/i, "<html$1><head>" + styleTags + "</head>");
+        } else {
+          html = "<head>" + styleTags + "</head>" + html;
+        }
+      }
+      // Inline JS files: insert as <script> tags before </body>
+      const scriptTags = jsFiles.map(f => "<script>\n/* " + f.name + " */\n" + (f.content || "") + "\n<\/script>").join("\n");
+      if (scriptTags) {
+        if (/<\/body>/i.test(html)) {
+          html = html.replace(/<\/body>/i, scriptTags + "\n</body>");
+        } else if (/<\/html>/i.test(html)) {
+          html = html.replace(/<\/html>/i, scriptTags + "\n</html>");
+        } else {
+          html = html + "\n" + scriptTags;
+        }
+      }
+      return html;
+    }
+    window.mergeFilesToHtml = mergeFilesToHtml;
+
+    // --- Draft autosave (survives refresh) ---
+    // Saves the editor content to localStorage under "kayhost-draft".
+    // Restored on page load by showEditor() above.
+    function saveDraft(html) {
+      try {
+        localStorage.setItem("kayhost-draft", JSON.stringify({
+          html: html || "",
+          savedAt: Date.now(),
+        }));
+      } catch (e) { /* localStorage might be full or disabled — silent */ }
+    }
+    function loadDraft() {
+      try {
+        const raw = localStorage.getItem("kayhost-draft");
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        if (data && typeof data.html === "string" && data.html.trim().length > 0) {
+          // Only restore if the draft is less than 7 days old (avoid stale content)
+          if (data.savedAt && (Date.now() - data.savedAt) < 7 * 86400000) {
+            return data.html;
+          }
+        }
+      } catch (e) {}
+      return null;
+    }
+    function clearDraft() {
+      try { localStorage.removeItem("kayhost-draft"); } catch (e) {}
     }
 
     function showPreview() {
@@ -1383,13 +1569,19 @@
     }
     function updatePreview() {
       const iframe = document.getElementById("preview-iframe");
-      iframe.srcdoc = currentHtml;
+      // If in multi-file mode, merge all files into one HTML blob for the preview
+      const htmlToRender = (typeof _files !== "undefined" && _files.length > 1) ? mergeFilesToHtml() : currentHtml;
+      iframe.srcdoc = htmlToRender;
       iframe.onload = () => { if (editing) wireElementClicks(iframe); };
     }
 
     // --- Deploy ---
     document.getElementById("deploy-btn").addEventListener("click", async () => {
-      const html = document.getElementById("html-input").value.trim();
+      // In multi-file mode, merge all files (CSS inlined as <style>, JS as <script>)
+      // before sending to /api/deploy. The deploy endpoint takes a single HTML blob.
+      const html = (typeof _files !== "undefined" && _files.length > 1)
+        ? mergeFilesToHtml().trim()
+        : document.getElementById("html-input").value.trim();
       const title = document.getElementById("title-input").value || "Untitled";
       if (!html) { toast("Paste some HTML first", "error"); return; }
       const btn = document.getElementById("deploy-btn");
@@ -1577,10 +1769,16 @@
             btn.disabled = false; btn.textContent = "Apply"; clearTimeout(timeout);
             return;
           } else {
+            // In multi-file mode, send the MERGED HTML to the AI (so the AI sees
+            // all inlined CSS/JS). When the AI returns the new HTML, we replace
+            // the active file's content with it — if the active file is HTML,
+            // it's a direct swap; if it's CSS/JS, the active file gets the
+            // relevant extracted block (best-effort).
+            const htmlToSend = (typeof _files !== "undefined" && _files.length > 1) ? mergeFilesToHtml() : currentHtml;
             const res = await fetch("/api/ai-edit", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ html: currentHtml, selector: selectedSelector, instruction: inst, browserId: getBrowserId() }),
+              body: JSON.stringify({ html: htmlToSend, selector: selectedSelector, instruction: inst, browserId: getBrowserId() }),
               signal: controller.signal,
             });
             if (!res.ok) {
@@ -1928,25 +2126,48 @@ Return ONLY the raw HTML:`;
             } catch (e) { /* Cloudinary not set up — keep data URL fallback */ }
           } catch (e) {}
         }
-        // CSS files: inline them
-        const cssFiles = files.filter(f => f.name.endsWith(".css"));
-        for (const css of cssFiles) {
-          const cssText = await css.text();
-          const cssPath = css.webkitRelativePath || css.name;
-          html = html.replace(new RegExp('<link[^>]*href=["\']' + cssPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '["\'][^>]*>', 'g'), '<style>\n' + cssText + '\n</style>');
+        // CSS files: inline them into the HTML (single-file mode)
+        // JS files: inline them into the HTML (single-file mode)
+        // (In multi-file mode below, we keep each file in its own tab instead
+        // of inlining — so the user can edit them separately.)
+        const cssFilesAll = files.filter(f => f.name.endsWith(".css"));
+        const jsFilesAll = files.filter(f => f.name.endsWith(".js"));
+        const useMultiFileMode = (cssFilesAll.length + jsFilesAll.length) > 0;
+
+        if (!useMultiFileMode) {
+          // Single-file mode: inline everything into one HTML blob (original behavior)
+          for (const css of cssFilesAll) {
+            const cssText = await css.text();
+            const cssPath = css.webkitRelativePath || css.name;
+            html = html.replace(new RegExp('<link[^>]*href=["\']' + cssPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '["\'][^>]*>', 'g'), '<style>\n' + cssText + '\n</style>');
+          }
+          for (const js of jsFilesAll) {
+            const jsText = await js.text();
+            const jsPath = js.webkitRelativePath || js.name;
+            html = html.replace(new RegExp('<script[^>]*src=["\']' + jsPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '["\'][^>]*><\\/script>', 'g'), '<script>\n' + jsText + '\n<\/script>');
+          }
+          document.getElementById("html-input").value = html;
+          currentHtml = html;
+          showEditor();
+          saveDraft(currentHtml);
+          toast("Folder loaded (" + files.length + " files merged)", "success");
+        } else {
+          // Multi-file mode: each file becomes its own tab (htmlhost.co style)
+          _files = [{ name: htmlFile.name, content: html }];
+          for (const css of cssFilesAll) {
+            _files.push({ name: css.name, content: await css.text() });
+          }
+          for (const js of jsFilesAll) {
+            _files.push({ name: js.name, content: await js.text() });
+          }
+          _activeFileIndex = 0;
+          document.getElementById("html-input").value = html;
+          currentHtml = html;
+          renderFileTabs();
+          showEditor();
+          saveDraft(currentHtml);
+          toast("Folder loaded — " + _files.length + " files in tabs", "success");
         }
-        // JS files: inline them
-        const jsFiles = files.filter(f => f.name.endsWith(".js"));
-        for (const js of jsFiles) {
-          const jsText = await js.text();
-          const jsPath = js.webkitRelativePath || js.name;
-          html = html.replace(new RegExp('<script[^>]*src=["\']' + jsPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '["\'][^>]*><\\/script>', 'g'), '<script>\n' + jsText + '\n<\/script>');
-        }
-        // Load into editor
-        document.getElementById("html-input").value = html;
-        currentHtml = html;
-        showEditor();
-        toast("Folder loaded (" + files.length + " files merged)", "success");
       } catch (err) { toast(err.message, "error"); }
     });
 
@@ -1985,9 +2206,13 @@ Return ONLY the raw HTML:`;
     // Download whatever HTML is currently in the paste-box as a .html file.
     // Always available (no Pro gating) — your own HTML, your own download.
     // Works after paste, after Clone from URL, after AI edit, after template load — anything in the box.
+    // In multi-file mode, downloads the merged HTML (all files inlined).
     window.downloadCurrentHtml = function() {
       const ta = document.getElementById("html-input");
-      const html = (ta && ta.value || "").trim();
+      // In multi-file mode, download the MERGED HTML (CSS inlined, JS inlined)
+      const html = (typeof _files !== "undefined" && _files.length > 1)
+        ? mergeFilesToHtml().trim()
+        : ((ta && ta.value || "").trim());
       if (!html) { toast("Nothing to download — paste some HTML first", "error"); return; }
       const titleInput = document.getElementById("title-input");
       const rawTitle = (titleInput && titleInput.value || "kayhost-page").trim() || "kayhost-page";
@@ -2045,6 +2270,7 @@ Return ONLY the raw HTML:`;
         if (!data.html) throw new Error("That URL returned an empty page.");
         textarea.value = data.html;
         currentHtml = data.html;
+        saveDraft(currentHtml);
         showEditor();
         document.getElementById("clone-modal").classList.add("hidden");
         if (data.warning) toast(data.warning, "info");
@@ -2497,6 +2723,13 @@ Return ONLY the raw HTML:`;
           updateDrawerUser(currentUser);
           // Still sync to window so the classic script can read it
           syncUserToWindow(currentUser, userIsAdmin);
+          // Auto-resume Paystack flow if user was trying to upgrade when prompted to sign in
+          if (window._pendingProUpgrade) {
+            window._pendingProUpgrade = false;
+            setTimeout(function() {
+              if (typeof startProUpgrade === "function") startProUpgrade();
+            }, 800);
+          }
         } else {
           // Truly not signed in
           userIsAdmin = false;
@@ -2626,6 +2859,13 @@ Return ONLY the raw HTML:`;
         await saveUserToServer(result.user);
         document.getElementById("signin-modal").classList.add("hidden");
         toast("Signed in successfully", "success");
+        // Auto-resume Paystack flow if user was trying to upgrade
+        if (window._pendingProUpgrade) {
+          window._pendingProUpgrade = false;
+          setTimeout(function() {
+            if (typeof startProUpgrade === "function") startProUpgrade();
+          }, 1200);
+        }
       } catch (err) {
         showAuthErrorInModal(authErrorMessage(err));
       } finally {
@@ -2641,6 +2881,13 @@ Return ONLY the raw HTML:`;
         await saveUserToServer(result.user);
         document.getElementById("signin-modal").classList.add("hidden");
         toast("Signed in successfully", "success");
+        // Auto-resume Paystack flow if user was trying to upgrade
+        if (window._pendingProUpgrade) {
+          window._pendingProUpgrade = false;
+          setTimeout(function() {
+            if (typeof startProUpgrade === "function") startProUpgrade();
+          }, 1200);
+        }
       } catch (err) {
         showAuthErrorInModal(authErrorMessage(err));
       } finally {
@@ -2679,6 +2926,14 @@ Return ONLY the raw HTML:`;
         userIsAdmin = ADMIN_EMAILS.includes((userData.email || "").toLowerCase());
         // Sync to window so the classic script can read Pro status + uid
         syncUserToWindow(currentUser, userIsAdmin);
+        // If the user was trying to upgrade to Pro when prompted to sign in,
+        // auto-resume the Paystack flow now that they're signed in.
+        if (window._pendingProUpgrade) {
+          window._pendingProUpgrade = false;
+          setTimeout(function() {
+            if (typeof startProUpgrade === "function") startProUpgrade();
+          }, 800);  // small delay so the sign-in toast shows first
+        }
         // Update nav
         const authArea = document.getElementById("auth-area");
         if (authArea) {
@@ -3333,12 +3588,19 @@ Return ONLY the raw HTML:`;
       // Need a signed-in user — can't pay anonymously
       const u = window.currentUser || null;
       if (!u || !u.email) {
-        // Close the Pro upgrade modal first, then prompt sign-in
+        // Queue the upgrade — after the user signs in, we'll auto-resume.
+        // This fixes the "I clicked Upgrade but nothing happened" UX: instead
+        // of just showing a toast, we remember the intent and trigger it
+        // automatically once sign-in completes.
+        window._pendingProUpgrade = true;
         closeProUpgrade();
         document.getElementById("signin-modal").classList.remove("hidden");
-        toast("Sign in first to upgrade to Pro", "info");
+        toast("Sign in first — we'll continue to Paystack after", "info");
         return;
       }
+
+      // Clear the pending flag (we're proceeding now)
+      window._pendingProUpgrade = false;
 
       // Generate a unique payment reference (Paystack requires one)
       const reference = "kay-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
