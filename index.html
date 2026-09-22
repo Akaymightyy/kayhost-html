@@ -1752,14 +1752,20 @@
         // token in the Authorization header (server verifies Pro status).
         if (modelChoice && modelChoice.indexOf("ashna:") === 0) {
           const ashnaModelId = modelChoice.slice("ashna:".length);
-          // Get a fresh Firebase ID token to send to the server.
+          // Get a Firebase ID token to send to the server.
           // The server uses this to verify the user's identity + Pro status.
+          // Tries Firebase SDK first (Google/GitHub), then localStorage fallback
+          // (email/password REST API sign-in stores idToken there).
           let idToken = null;
           try {
             idToken = await getIdTokenForAdmin();
-          } catch (e) {}
+          } catch (e) {
+            console.warn("[ashna] getIdTokenForAdmin threw:", e.message);
+          }
           if (!idToken) {
-            throw new Error("Sign in to use Ashna models");
+            // Try to re-sign-in: clear stale session and prompt
+            toast("Your session has expired. Please sign out and sign back in.", "error");
+            throw new Error("Session expired — sign out and back in to use Ashna models");
           }
           const res = await fetch("/api/ai-edit", {
             method: "POST",
@@ -1770,7 +1776,7 @@
             body: JSON.stringify({
               provider: "ashna",
               model: ashnaModelId,
-              html: currentHtml,
+              html: (typeof _files !== "undefined" && _files.length > 1) ? mergeFilesToHtml() : currentHtml,
               selector: selectedSelector,
               instruction: inst,
               browserId: getBrowserId(),
@@ -1779,6 +1785,17 @@
           });
           if (!res.ok) {
             const errData = await res.json().catch(() => ({}));
+            if (res.status === 401) {
+              toast("Session expired — sign out and back in", "error");
+              throw new Error("Your session has expired. Sign out and sign back in to use Ashna models.");
+            }
+            if (res.status === 403 && errData.proRequired) {
+              // Non-Pro user somehow reached here — open upgrade modal
+              if (typeof showProUpgrade === "function") {
+                showProUpgrade("AshnaAI", errData.error || "AshnaAI is a Pro feature.");
+              }
+              throw new Error(errData.error || "Pro required");
+            }
             throw new Error(errData.error || "AI edit failed");
           }
           html = (await res.json()).html;
@@ -1949,7 +1966,18 @@ Return ONLY the raw HTML:`;
       const el = document.getElementById("ai-usage-badge");
       if (!el) return;
       const modelChoice = document.getElementById("ai-model").value;
+      // Ashna models use server-side Pro auth, not the free BYOK system.
+      // Hide the free-usage badge entirely for Ashna selections.
+      if (modelChoice && modelChoice.indexOf("ashna:") === 0) {
+        el.style.display = "none";
+        return;
+      }
       const provider = AI_PROVIDERS[modelChoice];
+      // Defensive: if the model isn't in AI_PROVIDERS (unknown selection), hide badge
+      if (!provider) {
+        el.style.display = "none";
+        return;
+      }
       const ownKey = getByokKey(provider.byokProvider);
       if (ownKey || !provider.allowServerFallback) { el.style.display = "none"; return; }
       const used = getLocalUsageToday();
@@ -1959,7 +1987,10 @@ Return ONLY the raw HTML:`;
     }
     function saveByokKey() {
       const modelChoice = document.getElementById("ai-model").value;
+      // Ashna models don't use BYOK — no-op
+      if (modelChoice && modelChoice.indexOf("ashna:") === 0) return;
       const provider = AI_PROVIDERS[modelChoice];
+      if (!provider) return;
       const val = document.getElementById("ai-byok-key").value.trim();
       if (!val) return;
       setByokKey(provider.byokProvider, val);
@@ -1969,7 +2000,10 @@ Return ONLY the raw HTML:`;
     }
     function clearByokKey() {
       const modelChoice = document.getElementById("ai-model").value;
+      // Ashna models don't use BYOK — no-op
+      if (modelChoice && modelChoice.indexOf("ashna:") === 0) return;
       const provider = AI_PROVIDERS[modelChoice];
+      if (!provider) return;
       removeByokKey(provider.byokProvider);
       onAiModelChange();
     }
