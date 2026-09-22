@@ -1,4 +1,8 @@
 {
+  "functions": {
+    "api/ai-edit.js": { "maxDuration": 60 },
+    "api/ashna-models.js": { "maxDuration": 15 }
+  },
   "headers": [
     {
       "source": "/(.*)",
@@ -33,6 +37,7 @@
     { "source": "/api/settings", "destination": "/api/main?route=settings" },
     { "source": "/api/user-profile", "destination": "/api/main?route=user-profile" },
     { "source": "/api/paystack/verify", "destination": "/api/main?route=paystack-verify" },
+    { "source": "/api/ashna-models", "destination": "/api/ashna-models.js" },
     { "source": "/site/:id", "destination": "/api/main?route=site&id=:id" },
     { "source": "/api/signin", "destination": "/api/auth?route=signin" },
     { "source": "/api/signup", "destination": "/api/auth?route=signup" },

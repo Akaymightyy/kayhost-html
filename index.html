@@ -1108,6 +1108,8 @@
         <option value="claude-opus">Claude Opus 5 — bring your key</option>
         <option value="gpt-mini">GPT-4.1 mini — bring your key</option>
         <option value="gpt">GPT-5.5 — bring your key</option>
+        <!-- AshnaAI - Pro group, populated dynamically by loadAshnaModels() -->
+        <optgroup label="AshnaAI — Pro" id="ashna-optgroup" style="display:none;"></optgroup>
       </select>
     </div>
 
@@ -1524,21 +1526,38 @@
       const timeout = setTimeout(() => controller.abort(), 45000);
       try {
         const modelChoice = document.getElementById("ai-model").value;
-        const provider = AI_PROVIDERS[modelChoice];
-        const ownKey = getByokKey(provider.byokProvider);
         let html;
 
-        if (ownKey) {
-          html = await provider.directCall(ownKey, currentHtml, selectedSelector, inst, controller.signal);
-        } else if (!provider.allowServerFallback) {
-          toast("Add your " + provider.label + " API key first (see Settings)", "error");
-          btn.disabled = false; btn.textContent = "Apply"; clearTimeout(timeout);
-          return;
-        } else {
+        // --- Ashna branch (Pro-only, server-side key + Firebase token) ---
+        // Ashna model option values are prefixed with "ashna:" so we can dispatch
+        // here without a registry lookup. The actual model ID is the part after
+        // the colon. The request includes provider:"ashna" + the Firebase ID
+        // token in the Authorization header (server verifies Pro status).
+        if (modelChoice && modelChoice.indexOf("ashna:") === 0) {
+          const ashnaModelId = modelChoice.slice("ashna:".length);
+          // Get a fresh Firebase ID token to send to the server.
+          // The server uses this to verify the user's identity + Pro status.
+          let idToken = null;
+          try {
+            idToken = await getIdTokenForAdmin();
+          } catch (e) {}
+          if (!idToken) {
+            throw new Error("Sign in to use Ashna models");
+          }
           const res = await fetch("/api/ai-edit", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ html: currentHtml, selector: selectedSelector, instruction: inst, browserId: getBrowserId() }),
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": "Bearer " + idToken,
+            },
+            body: JSON.stringify({
+              provider: "ashna",
+              model: ashnaModelId,
+              html: currentHtml,
+              selector: selectedSelector,
+              instruction: inst,
+              browserId: getBrowserId(),
+            }),
             signal: controller.signal,
           });
           if (!res.ok) {
@@ -1546,7 +1565,31 @@
             throw new Error(errData.error || "AI edit failed");
           }
           html = (await res.json()).html;
-          bumpLocalUsageDisplay();
+        } else {
+          // --- Gemini / BYOK branch (unchanged from before) ---
+          const provider = AI_PROVIDERS[modelChoice];
+          const ownKey = getByokKey(provider.byokProvider);
+
+          if (ownKey) {
+            html = await provider.directCall(ownKey, currentHtml, selectedSelector, inst, controller.signal);
+          } else if (!provider.allowServerFallback) {
+            toast("Add your " + provider.label + " API key first (see Settings)", "error");
+            btn.disabled = false; btn.textContent = "Apply"; clearTimeout(timeout);
+            return;
+          } else {
+            const res = await fetch("/api/ai-edit", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ html: currentHtml, selector: selectedSelector, instruction: inst, browserId: getBrowserId() }),
+              signal: controller.signal,
+            });
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({}));
+              throw new Error(errData.error || "AI edit failed");
+            }
+            html = (await res.json()).html;
+            bumpLocalUsageDisplay();
+          }
         }
 
         clearTimeout(timeout);
@@ -1709,9 +1752,29 @@ Return ONLY the raw HTML:`;
     }
     function onAiModelChange() {
       const modelChoice = document.getElementById("ai-model").value;
-      const provider = AI_PROVIDERS[modelChoice];
       const row = document.getElementById("ai-byok-row");
       const saved = document.getElementById("ai-byok-saved");
+      // Ashna models use a server-side key + Pro check — no BYOK row, no key input
+      if (modelChoice && modelChoice.indexOf("ashna:") === 0) {
+        row.style.display = "none";
+        saved.style.display = "none";
+        // UX gate: if user is not Pro, surface the upgrade modal instead of letting
+        // them try (and get a 403 server-side). This is UX only — the server check is
+        // the real security gate.
+        const isPro = (window.kayhostUserPro === true) || (window.currentUser && window.currentUser.pro === true);
+        if (!isPro) {
+          // Reset to Gemini to avoid leaving an unusable option selected
+          document.getElementById("ai-model").value = "gemini";
+          if (typeof showProUpgrade === "function") {
+            showProUpgrade("AshnaAI", "AshnaAI is a Pro-only AI provider. Upgrade to use it for unlimited HTML edits with GLM 5.3, Claude, GPT, and more.");
+          } else {
+            toast("AshnaAI is a Pro feature", "info");
+          }
+        }
+        renderUsageBadge();
+        return;
+      }
+      const provider = AI_PROVIDERS[modelChoice];
       const hasKey = !!getByokKey(provider.byokProvider);
       // Gemini's key box is optional (server fallback exists) — only force it open
       // for providers with no free tier at all.
@@ -1719,6 +1782,40 @@ Return ONLY the raw HTML:`;
       saved.style.display = hasKey ? "block" : "none";
       renderUsageBadge();
     }
+
+    // --- AshnaAI catalog loader (Pro-only provider) ---
+    // Fetches /api/ashna-models on page load + when the AI panel opens.
+    // Populates the <optgroup id="ashna-optgroup"> with options whose value is
+    // "ashna:<model_id>". If the fetch fails or returns empty, the optgroup
+    // stays hidden and Gemini keeps working as the default.
+    let _ashnaCatalogLoaded = false;
+    async function loadAshnaModels() {
+      const optgroup = document.getElementById("ashna-optgroup");
+      if (!optgroup || _ashnaCatalogLoaded) return;
+      _ashnaCatalogLoaded = true;  // prevent repeat fetches
+      try {
+        const res = await fetch("/api/ashna-models", { cache: "no-store" });
+        if (!res.ok) { return; }
+        const data = await res.json();
+        const models = (data && Array.isArray(data.models)) ? data.models : [];
+        if (!models.length) {
+          // No models available — keep optgroup hidden, Gemini is the default
+          return;
+        }
+        optgroup.innerHTML = models.map(function(m) {
+          // value uses "ashna:" prefix so onAiModelChange can detect Ashna selections
+          // by string prefix, without needing a separate registry lookup.
+          return '<option value="ashna:' + escapeHtml(m.id) + '">' + escapeHtml(m.displayName || m.id) + ' — Pro</option>';
+        }).join("");
+        optgroup.style.display = "";
+      } catch (e) {
+        // Silent failure — Gemini keeps working, the user just doesn't see Ashna options
+        console.warn("[ashna] Couldn't load AshnaAI catalog:", e.message || e);
+      }
+    }
+    // Trigger the catalog fetch on page load
+    if (document.readyState !== "loading") loadAshnaModels();
+    else document.addEventListener("DOMContentLoaded", loadAshnaModels);
     function insertAiChip(text) {
       const el = document.getElementById("ai-instruction");
       el.value = text; el.focus();
