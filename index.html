@@ -1400,17 +1400,14 @@
       });
       textarea.addEventListener("change", () => saveDraft(currentHtml));
       showPreview();
+      renderFileTabs();  // show the file-tabs bar with the "+" button
       section.scrollIntoView({ behavior: "smooth" });
     }
 
     // ===== Multi-file editor (htmlhost.co-style tabs) =====
-    // Backwards-compatible: if `_files` has only ONE entry (the default), the
-    // file-tabs bar stays HIDDEN and the editor behaves EXACTLY as before —
-    // single textarea, single HTML blob.
-    // When the user uploads a folder OR clicks "Add file", `_files` grows and
-    // the tabs bar appears. Each tab = one file. Switching tabs swaps the
-    // textarea's content. On deploy / preview / AI edit, all files are merged
-    // into one HTML blob (CSS inlined in <style>, JS inlined in <script>).
+    // The file-tabs bar is ALWAYS visible (with the "+" button). When there's
+    // only 0-1 files, only the "+" button shows. When the user clicks "+",
+    // a new file tab is created and the bar expands to show all tabs.
     let _files = [];          // [{ name: "index.html", content: "..." }, ...]
     let _activeFileIndex = -1; // -1 means single-file mode (no tabs visible)
 
@@ -1418,12 +1415,15 @@
       const bar = document.getElementById("file-tabs-bar");
       const list = document.getElementById("file-tabs-list");
       if (!bar || !list) return;
+      // ALWAYS show the bar — even in single-file mode — so the "+" button
+      // to add new files is always visible (like htmlhost.co).
+      // When there's only 0-1 files, we show just the "+" button (no tabs).
+      bar.style.display = "flex";
       if (_files.length <= 1) {
-        // Single-file mode — hide tabs, behave as before
-        bar.style.display = "none";
+        // Single-file mode — no tabs, just the "+" button
+        list.innerHTML = "";
         return;
       }
-      bar.style.display = "flex";
       list.innerHTML = _files.map(function(f, i) {
         const isActive = i === _activeFileIndex;
         const langIcon = f.name.endsWith(".css") ? "🎨"
@@ -1561,6 +1561,30 @@
     }
     function clearDraft() {
       try { localStorage.removeItem("kayhost-draft"); } catch (e) {}
+    }
+
+    // ===== Auto-restore draft on page load (survives refresh) =====
+    // Checks localStorage for a saved draft. If found, automatically opens the
+    // editor section and loads the draft — so a refresh doesn't wipe the user's work.
+    // This is the fix for "when users mistakenly refresh the codes shouldn't disappear".
+    function autoRestoreDraft() {
+      const draft = loadDraft();
+      if (!draft) return;
+      // Only auto-restore if we're on the "new" view (don't pop up the editor on /sites, /admin, etc.)
+      const viewNew = document.getElementById("view-new");
+      if (!viewNew || !viewNew.classList.contains("visible")) return;
+      const textarea = document.getElementById("html-input");
+      if (textarea) textarea.value = draft;
+      // Show the editor + render file tabs
+      showEditor();
+    }
+    // Run after DOM is ready
+    if (document.readyState !== "loading") {
+      setTimeout(autoRestoreDraft, 100);
+    } else {
+      document.addEventListener("DOMContentLoaded", function() {
+        setTimeout(autoRestoreDraft, 100);
+      });
     }
 
     function showPreview() {
@@ -3584,7 +3608,47 @@ Return ONLY the raw HTML:`;
     // Open the Paystack payment popup with the signed-in user's email pre-filled.
     // Called from the "Pay ₦10,000 with Paystack" button in the Pro upgrade modal,
     // and from the "Upgrade to Pro" button on the /pricing page.
-    window.startProUpgrade = function() {
+    // Dynamically load the Paystack inline script if it's not already loaded.
+    // Returns a Promise that resolves to true if PaystackPop is available, false if it fails.
+    function loadPaystackScript() {
+      return new Promise(function(resolve) {
+        // If already loaded, resolve immediately
+        if (typeof PaystackPop !== "undefined") {
+          resolve(true);
+          return;
+        }
+        // Check if there's already a <script> tag for Paystack (might still be loading)
+        const existing = document.querySelector('script[src*="js.paystack.co"]');
+        if (existing) {
+          // Wait for it to finish loading
+          existing.addEventListener("load", function() {
+            resolve(typeof PaystackPop !== "undefined");
+          });
+          existing.addEventListener("error", function() {
+            resolve(false);
+          });
+          // Timeout after 10 seconds
+          setTimeout(function() { resolve(typeof PaystackPop !== "undefined"); }, 10000);
+          return;
+        }
+        // Inject a fresh <script> tag
+        const script = document.createElement("script");
+        script.src = "https://js.paystack.co/v1/inline.js";
+        script.async = true;
+        script.onload = function() {
+          resolve(typeof PaystackPop !== "undefined");
+        };
+        script.onerror = function() {
+          resolve(false);
+        };
+        document.head.appendChild(script);
+        // Timeout after 10 seconds
+        setTimeout(function() { resolve(typeof PaystackPop !== "undefined"); }, 10000);
+      });
+    }
+    window.loadPaystackScript = loadPaystackScript;
+
+    window.startProUpgrade = async function() {
       // Need a signed-in user — can't pay anonymously
       const u = window.currentUser || null;
       if (!u || !u.email) {
@@ -3605,10 +3669,16 @@ Return ONLY the raw HTML:`;
       // Generate a unique payment reference (Paystack requires one)
       const reference = "kay-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
 
-      // Verify Paystackinline is loaded
+      // Verify Paystack inline is loaded. If not, try to load it dynamically
+      // (the <script src="..."> at the bottom of body might have been blocked
+      // by an ad blocker or failed due to slow network).
       if (typeof PaystackPop === "undefined") {
-        toast("Couldn't load Paystack. Check your internet and try again.", "error");
-        return;
+        // Try to dynamically inject the Paystack script and wait for it
+        const loaded = await loadPaystackScript();
+        if (!loaded) {
+          toast("Couldn't load Paystack. Check your internet or disable ad blockers, then try again.", "error");
+          return;
+        }
       }
 
       // Close the Pro upgrade modal so the Paystack popup is visible
