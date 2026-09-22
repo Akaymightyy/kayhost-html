@@ -7,6 +7,8 @@
 const { GoogleGenAI } = require("@google/genai");
 const { getDb } = require("../lib/firebase");
 const { doc, getDoc, setDoc } = require("firebase/firestore");
+const { verifyRequestToken } = require("../lib/admin-firebase");
+const ashna = require("../lib/ashna");
 
 // SECURITY: GEMINI_API_KEY must be set as a Vercel env var — never hardcoded.
 // The previous hardcoded fallback was exposed when the site was mirrored with
@@ -29,7 +31,7 @@ function isScraperUa(ua) {
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.status(204).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
   // Block scrapers
@@ -38,11 +40,26 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { html, selector, instruction, browserId } = req.body || {};
+    const { html, selector, instruction, browserId, provider, model } = req.body || {};
 
     if (!html || !instruction) {
       return res.status(400).json({ error: "html and instruction are required" });
     }
+
+    // --- Ashna provider branch (Pro-only) ---
+    // If provider === "ashna", we route to a separate handler that:
+    //   1. Verifies the Firebase ID token (server-side via Admin SDK)
+    //   2. Reads the user doc from Firestore and requires pro === true
+    //   3. Validates the model against the cached catalog (allowlist ∩ live /models)
+    //   4. Enforces a per-user daily cap (50/day by default, configurable)
+    //   5. Calls Ashna's chat-completions endpoint with a hard timeout < maxDuration
+    //   6. Strips code fences, validates the output is complete HTML, returns { html }
+    // The Gemini flow below is UNCHANGED — no provider in body = Gemini as today.
+    if (provider === "ashna") {
+      return handleAshnaEdit(req, res, { html, selector, instruction, model });
+    }
+
+    // --- Existing Gemini flow below (unchanged) ---
 
     // --- Daily free-tier limit (per browserId, resets at UTC midnight) ---
     // Only CHECK here — we only count it against the quota once Gemini actually
@@ -184,3 +201,163 @@ Return ONLY the raw HTML:`;
     return res.status(500).json({ error: msg });
   }
 };
+
+// ===== Ashna provider handler (Pro-only) =====
+// Reuses the same HTML size limit + fence-stripping conventions as Gemini.
+// Differs in: requires a verified Firebase ID token + Pro flag, has its own
+// per-user daily cap (50/day by default), uses OpenAI-compatible chat-completions.
+async function handleAshnaEdit(req, res, body) {
+  // The body fields were already validated by the main handler (html + instruction
+  // are present). Re-check here for safety in case handleAshnaEdit is called directly.
+  if (!body.html || !body.instruction) {
+    return res.status(400).json({ error: "html and instruction are required" });
+  }
+  // HTML size limit (matches Gemini's 500KB cap)
+  if (typeof body.html === "string" && body.html.length > 500_000) {
+    return res.status(413).json({ error: "HTML too large (max 500KB)" });
+  }
+  // Model ID is required for Ashna calls
+  if (!body.model || typeof body.model !== "string" || body.model.length > 100) {
+    return res.status(400).json({ error: "Valid model ID is required for Ashna" });
+  }
+
+  // --- Step 1: Verify the Firebase ID token server-side ---
+  // uid is taken from the VERIFIED token — never from the request body.
+  // If the token is missing or invalid → 401.
+  let decoded;
+  try {
+    decoded = await verifyRequestToken(req);
+  } catch (err) {
+    const status = err.status || 401;
+    return res.status(status).json({
+      error: status === 401
+        ? "Sign in to use Ashna models"
+        : (err.message || "Authentication required"),
+    });
+  }
+  const uid = decoded.uid;
+
+  // --- Step 2: Require Pro flag in Firestore (same flag Paystack sets) ---
+  // Reuses the existing Firestore client SDK init. The user doc is read with
+  // the verified uid. If pro !== true → 403, regardless of browserId.
+  let userDoc = null;
+  try {
+    const db = getDb();
+    const snap = await getDoc(doc(db, "users", uid));
+    if (snap.exists()) userDoc = snap.data();
+  } catch (e) {
+    // Firestore might be down — fail safe (deny rather than accidentally allow)
+    console.error("[ai-edit:ashna] Couldn't read user doc:", e.message || e);
+    return res.status(500).json({ error: "Couldn't verify account status. Try again." });
+  }
+  if (!userDoc || userDoc.pro !== true) {
+    return res.status(403).json({
+      error: "AshnaAI is a Pro feature. Upgrade to Pro to use it.",
+      proRequired: true,
+    });
+  }
+
+  // --- Step 3: Validate the requested model against the cached catalog ---
+  // The cached catalog is the intersection of ASHNA_ALLOWED_MODELS ∩ live /models
+  // response. A model not in the catalog returns 400 (user error, not provider).
+  const isValidModel = await ashna.validateAshnaModel(body.model);
+  if (!isValidModel) {
+    return res.status(400).json({
+      error: "Unknown or unavailable AshnaAI model: " + body.model,
+    });
+  }
+
+  // --- Step 4: Per-user daily cap (Pro users, 50/day by default) ---
+  // Stored in Firestore collection "ashnaUsage", doc id = `${uid}_${YYYY-MM-DD}`,
+  // field "count" (number). Counter is incremented ONLY on success — a failed
+  // Ashna call doesn't burn the user's quota.
+  const today = new Date().toISOString().slice(0, 10);
+  const usageId = uid + "_" + today;
+  const DAILY_LIMIT = ashna._dailyLimit();
+  let usageCount = 0;
+  let db = null;
+  try {
+    db = getDb();
+    const usageRef = doc(db, "ashnaUsage", usageId);
+    const usageSnap = await getDoc(usageRef);
+    usageCount = usageSnap.exists() ? (usageSnap.data().count || 0) : 0;
+    if (usageCount >= DAILY_LIMIT) {
+      return res.status(429).json({
+        error: `You've used all ${DAILY_LIMIT} AshnaAI edits for today. Try again tomorrow.`,
+        limitReached: true,
+      });
+    }
+  } catch (e) {
+    // If Firestore tracking fails, don't block the request — fail open.
+    // (The Pro check above is the real security gate; the cap is just fairness.)
+    console.warn("[ai-edit:ashna] Usage check failed (allowing):", e.message || e);
+  }
+
+  // --- Step 5: Build the prompt (same content as Gemini's prompt) ---
+  const systemPrompt = "You are a precise HTML editor. Return only complete valid HTML.";
+  const userPrompt = `You are an HTML editor. The user has an HTML document and wants to change a specific part of it.
+
+Here is the complete HTML document:
+\`\`\`html
+${body.html}
+\`\`\`
+
+The user selected the element matching this CSS selector: "${body.selector || "body"}"
+
+The user's instruction: "${body.instruction}"
+
+IMPORTANT INSTRUCTIONS:
+1. Apply the requested change to the selected element (or the whole document if no specific element).
+2. Return the COMPLETE updated HTML document — from <!DOCTYPE html> to </html>.
+3. Do NOT wrap the output in markdown code fences.
+4. Do NOT add any explanation, commentary, or text before or after the HTML.
+5. Do NOT change any part of the document that the user didn't ask to change.
+6. Keep all existing content intact unless the user explicitly asked to change it.
+
+Return ONLY the raw HTML:`;
+
+  // --- Step 6: Call Ashna with a hard timeout shorter than maxDuration ---
+  // Vercel Hobby maxDuration is 60s for this route (set in vercel.json).
+  // We use 50s for Ashna so there's buffer to clean up + return the response.
+  let ashnaResult;
+  try {
+    ashnaResult = await ashna.callAshnaChat(body.model, systemPrompt, userPrompt, {
+      timeoutMs: 50000,
+    });
+  } catch (err) {
+    // err.status is set by callAshnaChat to 502/503/504/429
+    const status = err.status || 502;
+    return res.status(status).json({
+      error: err.message || "AI provider error",
+    });
+  }
+
+  // --- Step 7: Strip fences + validate the output is complete HTML ---
+  const validated = ashna.validateAndExtractHtml(ashnaResult.text);
+  if (!validated.ok) {
+    // Don't expose the model's raw output — could contain provider error text
+    return res.status(502).json({
+      error: "AshnaAI returned an incomplete or invalid HTML response. Try rephrasing your instruction.",
+    });
+  }
+
+  // --- Step 8: Increment the daily counter (only on success) ---
+  try {
+    if (db) {
+      const usageRef = doc(db, "ashnaUsage", usageId);
+      await setDoc(usageRef, {
+        count: usageCount + 1,
+        uid,
+        date: today,
+        provider: "ashna",
+        model: body.model,
+      }, { merge: true });
+    }
+  } catch (e) {
+    // Don't fail the edit over a counter increment
+    console.warn("[ai-edit:ashna] Usage increment failed (edit still applied):", e.message || e);
+  }
+
+  // --- Success ---
+  return res.status(200).json({ html: validated.html });
+}
