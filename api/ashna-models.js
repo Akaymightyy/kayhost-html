@@ -36,6 +36,13 @@ module.exports = async (req, res) => {
 
   try {
     const { list, defaultModel, error } = await fetchAshnaModels();
+    // Diagnostic logging (safe — never logs the API key)
+    console.log("[ashna-models] Catalog:", list.length, "models, default:", defaultModel, "error:", error);
+    if (list.length === 0) {
+      console.log("[ashna-models] No models returned. Check: ASHNA_API_KEY set?", !!process.env.ASHNA_API_KEY,
+        "| ASHNA_ALLOWED_MODELS set?", !!process.env.ASHNA_ALLOWED_MODELS,
+        "| Allowlist count:", (process.env.ASHNA_ALLOWED_MODELS || "").split(",").filter(s => s.trim()).length);
+    }
     const body = { models: list, defaultModel };
     if (error && list.length === 0) body.error = error;
     return res.status(200).json(body);
