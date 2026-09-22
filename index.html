@@ -2805,11 +2805,25 @@ Return ONLY the raw HTML:`;
     };
 
     // Get the current user's Firebase ID token (for Authorization: Bearer header).
-    // Returns null if we can't get one (e.g. signed in via REST API without SDK).
+    // Tries the Firebase SDK first (Google/GitHub popup sign-in). If that fails
+    // (e.g. user signed in via email/password REST API), falls back to the
+    // idToken stored in localStorage by the REST sign-in flow.
     async function getIdTokenForAdmin() {
+      // Path 1: Firebase SDK — works for Google/GitHub popup sign-ins
       try {
         if (typeof auth !== "undefined" && auth && auth.currentUser) {
           return await auth.currentUser.getIdToken(true);
+        }
+      } catch (e) {}
+      // Path 2: REST API email/password sign-in — idToken stored in localStorage
+      // under "kayhost-user" as part of the userData object
+      try {
+        const stored = localStorage.getItem("kayhost-user");
+        if (stored) {
+          const userData = JSON.parse(stored);
+          if (userData && userData.idToken) {
+            return userData.idToken;
+          }
         }
       } catch (e) {}
       return null;
