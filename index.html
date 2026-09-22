@@ -1570,13 +1570,14 @@
     function autoRestoreDraft() {
       const draft = loadDraft();
       if (!draft) return;
-      // Only auto-restore if we're on the "new" view (don't pop up the editor on /sites, /admin, etc.)
-      const viewNew = document.getElementById("view-new");
-      if (!viewNew || !viewNew.classList.contains("visible")) return;
+      // Only auto-restore if we're on the main/new view (URL is "/" or empty)
+      const path = window.location.pathname;
+      if (path !== "/" && path !== "" && path !== "/new") return;
       const textarea = document.getElementById("html-input");
       if (textarea) textarea.value = draft;
       // Show the editor + render file tabs
       showEditor();
+      console.log("[draft] Auto-restored draft from last session");
     }
     // Run after DOM is ready
     if (document.readyState !== "loading") {
@@ -2016,22 +2017,27 @@ Return ONLY the raw HTML:`;
       if (!optgroup || _ashnaCatalogLoaded) return;
       _ashnaCatalogLoaded = true;  // prevent repeat fetches
       try {
+        console.log("[ashna] Fetching /api/ashna-models...");
         const res = await fetch("/api/ashna-models", { cache: "no-store" });
-        if (!res.ok) { return; }
+        console.log("[ashna] Response status:", res.status);
+        if (!res.ok) {
+          console.warn("[ashna] Fetch failed with HTTP", res.status);
+          return;
+        }
         const data = await res.json();
         const models = (data && Array.isArray(data.models)) ? data.models : [];
+        console.log("[ashna] Got", models.length, "models", models.length > 0 ? "—" + models.map(m => m.id).join(", ") : "");
+        if (data.error) console.warn("[ashna] Server error:", data.error);
         if (!models.length) {
-          // No models available — keep optgroup hidden, Gemini is the default
+          console.warn("[ashna] No models available — hiding AshnaAI group. Check Vercel logs for [ashna-models] diagnostics.");
           return;
         }
         optgroup.innerHTML = models.map(function(m) {
-          // value uses "ashna:" prefix so onAiModelChange can detect Ashna selections
-          // by string prefix, without needing a separate registry lookup.
           return '<option value="ashna:' + escapeHtml(m.id) + '">' + escapeHtml(m.displayName || m.id) + ' — Pro</option>';
         }).join("");
         optgroup.style.display = "";
+        console.log("[ashna] AshnaAI group populated and visible");
       } catch (e) {
-        // Silent failure — Gemini keeps working, the user just doesn't see Ashna options
         console.warn("[ashna] Couldn't load AshnaAI catalog:", e.message || e);
       }
     }
