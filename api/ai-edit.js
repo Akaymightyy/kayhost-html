@@ -9,6 +9,7 @@ const { getDb } = require("../lib/firebase");
 const { doc, getDoc, setDoc } = require("firebase/firestore");
 const { verifyRequestToken } = require("../lib/admin-firebase");
 const ashna = require("../lib/ashna");
+const aiProviders = require("../lib/ai-providers");
 
 // SECURITY: GEMINI_API_KEY must be set as a Vercel env var — never hardcoded.
 // The previous hardcoded fallback was exposed when the site was mirrored with
@@ -47,16 +48,14 @@ module.exports = async (req, res) => {
     }
 
     // --- Ashna provider branch (Pro-only) ---
-    // If provider === "ashna", we route to a separate handler that:
-    //   1. Verifies the Firebase ID token (server-side via Admin SDK)
-    //   2. Reads the user doc from Firestore and requires pro === true
-    //   3. Validates the model against the cached catalog (allowlist ∩ live /models)
-    //   4. Enforces a per-user daily cap (50/day by default, configurable)
-    //   5. Calls Ashna's chat-completions endpoint with a hard timeout < maxDuration
-    //   6. Strips code fences, validates the output is complete HTML, returns { html }
-    // The Gemini flow below is UNCHANGED — no provider in body = Gemini as today.
     if (provider === "ashna") {
       return handleAshnaEdit(req, res, { html, selector, instruction, model });
+    }
+
+    // --- OpenCode Zen + AgentRouter branches (free tier, same as Gemini) ---
+    // These share the SAME 10-edits/day browserId limit as Gemini. Not Pro-gated.
+    if (provider === "opencode" || provider === "agentrouter") {
+      return handleFreeProviderEdit(req, res, { html, selector, instruction, model, browserId, provider });
     }
 
     // --- Existing Gemini flow below (unchanged) ---
@@ -359,5 +358,104 @@ Return ONLY the raw HTML:`;
   }
 
   // --- Success ---
+  return res.status(200).json({ html: validated.html });
+}
+
+// ===== Free-tier provider handler (OpenCode Zen + AgentRouter) =====
+// Same daily limit as Gemini (10 edits/day per browserId). Not Pro-gated.
+// Uses the shared callProvider() from lib/ai-providers.js.
+async function handleFreeProviderEdit(req, res, body) {
+  if (!body.html || !body.instruction) {
+    return res.status(400).json({ error: "html and instruction are required" });
+  }
+  if (typeof body.html === "string" && body.html.length > 500_000) {
+    return res.status(413).json({ error: "HTML too large (max 500KB)" });
+  }
+  if (!body.model || typeof body.model !== "string" || body.model.length > 200) {
+    return res.status(400).json({ error: "Valid model ID is required" });
+  }
+  if (!body.provider || (body.provider !== "opencode" && body.provider !== "agentrouter")) {
+    return res.status(400).json({ error: "Provider must be 'opencode' or 'agentrouter'" });
+  }
+
+  // --- Daily free-tier limit (same as Gemini — browserId, 10/day) ---
+  const today = new Date().toISOString().slice(0, 10);
+  const usageId = (body.browserId || "anonymous") + "_" + today;
+  let usageCount = 0;
+  let usageDb = null;
+  try {
+    usageDb = getDb();
+    const usageRef = doc(usageDb, "aiUsage", usageId);
+    const usageSnap = await getDoc(usageRef);
+    usageCount = usageSnap.exists() ? (usageSnap.data().count || 0) : 0;
+    if (usageCount >= FREE_DAILY_LIMIT) {
+      return res.status(429).json({
+        error: `You've used all ${FREE_DAILY_LIMIT} free AI edits for today. Try again tomorrow.`,
+        limitReached: true,
+      });
+    }
+  } catch (usageErr) {
+    console.warn("[ai-edit:" + body.provider + "] Usage check failed (allowing):", usageErr.message);
+  }
+
+  // --- Build the prompt (same as Gemini + Ashna) ---
+  const systemPrompt = "You are a precise HTML editor. Return only complete valid HTML.";
+  const userPrompt = `You are an HTML editor. The user has an HTML document and wants to change a specific part of it.
+
+Here is the complete HTML document:
+\`\`\`html
+${body.html}
+\`\`\`
+
+The user selected the element matching this CSS selector: "${body.selector || "body"}"
+
+The user's instruction: "${body.instruction}"
+
+IMPORTANT INSTRUCTIONS:
+1. Apply the requested change to the selected element (or the whole document if no specific element).
+2. Return the COMPLETE updated HTML document — from <!DOCTYPE html> to </html>.
+3. Do NOT wrap the output in markdown code fences.
+4. Do NOT add any explanation, commentary, or text before or after the HTML.
+5. Do NOT change any part of the document that the user didn't ask to change.
+6. Keep all existing content intact unless the user explicitly asked to change it.
+
+Return ONLY the raw HTML:`;
+
+  // --- Call the provider ---
+  let result;
+  try {
+    result = await aiProviders.callProvider(body.provider, body.model, systemPrompt, userPrompt, {
+      timeoutMs: 50000,
+    });
+  } catch (err) {
+    const status = err.status || 502;
+    return res.status(status).json({ error: err.message || "AI provider error" });
+  }
+
+  // --- Strip fences + validate HTML ---
+  // Reuse the same validation logic as Ashna (from lib/ashna.js)
+  const validated = ashna.validateAndExtractHtml(result.text);
+  if (!validated.ok) {
+    return res.status(502).json({
+      error: "AI provider returned an incomplete or invalid HTML response. Try rephrasing your instruction.",
+    });
+  }
+
+  // --- Increment daily counter (only on success) ---
+  try {
+    if (usageDb) {
+      const usageRef = doc(usageDb, "aiUsage", usageId);
+      await setDoc(usageRef, {
+        count: usageCount + 1,
+        browserId: body.browserId || "anonymous",
+        date: today,
+        provider: body.provider,
+        model: body.model,
+      }, { merge: true });
+    }
+  } catch (e) {
+    console.warn("[ai-edit:" + body.provider + "] Usage increment failed:", e.message);
+  }
+
   return res.status(200).json({ html: validated.html });
 }
