@@ -52,10 +52,11 @@ module.exports = async (req, res) => {
       return handleAshnaEdit(req, res, { html, selector, instruction, model });
     }
 
-    // --- OpenCode Zen + AgentRouter branches (free tier, same as Gemini) ---
-    // These share the SAME 10-edits/day browserId limit as Gemini. Not Pro-gated.
+    // --- OpenCode Zen + AgentRouter branches (Pro-only, 50/day per-user cap) ---
+    // Same Pro-gating as Ashna: verify Firebase ID token → check pro === true →
+    // validate model against catalog → check 50/day cap → call provider API.
     if (provider === "opencode" || provider === "agentrouter") {
-      return handleFreeProviderEdit(req, res, { html, selector, instruction, model, browserId, provider });
+      return handleProProviderEdit(req, res, { html, selector, instruction, model, provider });
     }
 
     // --- Existing Gemini flow below (unchanged) ---
@@ -361,10 +362,18 @@ Return ONLY the raw HTML:`;
   return res.status(200).json({ html: validated.html });
 }
 
-// ===== Free-tier provider handler (OpenCode Zen + AgentRouter) =====
-// Same daily limit as Gemini (10 edits/day per browserId). Not Pro-gated.
-// Uses the shared callProvider() from lib/ai-providers.js.
-async function handleFreeProviderEdit(req, res, body) {
+// ===== Pro-only provider handler (OpenCode Zen + AgentRouter) =====
+// Same Pro-gating pattern as Ashna:
+//   1. Verify Firebase ID token (server-side via Admin SDK)
+//   2. Read user doc from Firestore, require pro === true
+//   3. Validate model against the static catalog
+//   4. Per-user daily cap (50/day, configurable via PROVIDER_DAILY_LIMIT)
+//   5. Call provider API with timeout
+//   6. Strip fences, validate HTML, return { html }
+//   7. Increment counter only on success
+const PROVIDER_DAILY_LIMIT = parseInt(process.env.PROVIDER_DAILY_LIMIT || "50", 10) || 50;
+
+async function handleProProviderEdit(req, res, body) {
   if (!body.html || !body.instruction) {
     return res.status(400).json({ error: "html and instruction are required" });
   }
@@ -378,27 +387,67 @@ async function handleFreeProviderEdit(req, res, body) {
     return res.status(400).json({ error: "Provider must be 'opencode' or 'agentrouter'" });
   }
 
-  // --- Daily free-tier limit (same as Gemini — browserId, 10/day) ---
-  const today = new Date().toISOString().slice(0, 10);
-  const usageId = (body.browserId || "anonymous") + "_" + today;
-  let usageCount = 0;
-  let usageDb = null;
+  // --- Step 1: Verify the Firebase ID token (server-side) ---
+  let decoded;
   try {
-    usageDb = getDb();
-    const usageRef = doc(usageDb, "aiUsage", usageId);
+    decoded = await verifyRequestToken(req);
+  } catch (err) {
+    const status = err.status || 401;
+    return res.status(status).json({
+      error: status === 401
+        ? "Sign in to use this AI provider"
+        : (err.message || "Authentication required"),
+    });
+  }
+  const uid = decoded.uid;
+
+  // --- Step 2: Require Pro flag in Firestore ---
+  let userDoc = null;
+  try {
+    const db = getDb();
+    const snap = await getDoc(doc(db, "users", uid));
+    if (snap.exists()) userDoc = snap.data();
+  } catch (e) {
+    console.error("[ai-edit:" + body.provider + "] Couldn't read user doc:", e.message || e);
+    return res.status(500).json({ error: "Couldn't verify account status. Try again." });
+  }
+  if (!userDoc || userDoc.pro !== true) {
+    return res.status(403).json({
+      error: "This AI provider is a Pro feature. Upgrade to Pro to use it.",
+      proRequired: true,
+    });
+  }
+
+  // --- Step 3: Validate model against the static catalog ---
+  const isValidModel = aiProviders.validateModel(body.provider, body.model);
+  if (!isValidModel) {
+    return res.status(400).json({
+      error: "Unknown or unavailable model for " + body.provider + ": " + body.model,
+    });
+  }
+
+  // --- Step 4: Per-user daily cap (Pro users, 50/day by default) ---
+  // Stored in Firestore collection "providerUsage", doc id = `${uid}_${provider}_${date}`
+  const today = new Date().toISOString().slice(0, 10);
+  const usageId = uid + "_" + body.provider + "_" + today;
+  let usageCount = 0;
+  let db = null;
+  try {
+    db = getDb();
+    const usageRef = doc(db, "providerUsage", usageId);
     const usageSnap = await getDoc(usageRef);
     usageCount = usageSnap.exists() ? (usageSnap.data().count || 0) : 0;
-    if (usageCount >= FREE_DAILY_LIMIT) {
+    if (usageCount >= PROVIDER_DAILY_LIMIT) {
       return res.status(429).json({
-        error: `You've used all ${FREE_DAILY_LIMIT} free AI edits for today. Try again tomorrow.`,
+        error: `You've used all ${PROVIDER_DAILY_LIMIT} ${body.provider} edits for today. Try again tomorrow.`,
         limitReached: true,
       });
     }
-  } catch (usageErr) {
-    console.warn("[ai-edit:" + body.provider + "] Usage check failed (allowing):", usageErr.message);
+  } catch (e) {
+    console.warn("[ai-edit:" + body.provider + "] Usage check failed (allowing):", e.message || e);
   }
 
-  // --- Build the prompt (same as Gemini + Ashna) ---
+  // --- Step 5: Build the prompt (same as Gemini + Ashna) ---
   const systemPrompt = "You are a precise HTML editor. Return only complete valid HTML.";
   const userPrompt = `You are an HTML editor. The user has an HTML document and wants to change a specific part of it.
 
@@ -421,7 +470,7 @@ IMPORTANT INSTRUCTIONS:
 
 Return ONLY the raw HTML:`;
 
-  // --- Call the provider ---
+  // --- Step 6: Call the provider ---
   let result;
   try {
     result = await aiProviders.callProvider(body.provider, body.model, systemPrompt, userPrompt, {
@@ -432,8 +481,7 @@ Return ONLY the raw HTML:`;
     return res.status(status).json({ error: err.message || "AI provider error" });
   }
 
-  // --- Strip fences + validate HTML ---
-  // Reuse the same validation logic as Ashna (from lib/ashna.js)
+  // --- Step 7: Strip fences + validate HTML ---
   const validated = ashna.validateAndExtractHtml(result.text);
   if (!validated.ok) {
     return res.status(502).json({
@@ -441,20 +489,20 @@ Return ONLY the raw HTML:`;
     });
   }
 
-  // --- Increment daily counter (only on success) ---
+  // --- Step 8: Increment daily counter (only on success) ---
   try {
-    if (usageDb) {
-      const usageRef = doc(usageDb, "aiUsage", usageId);
+    if (db) {
+      const usageRef = doc(db, "providerUsage", usageId);
       await setDoc(usageRef, {
         count: usageCount + 1,
-        browserId: body.browserId || "anonymous",
-        date: today,
+        uid,
         provider: body.provider,
         model: body.model,
+        date: today,
       }, { merge: true });
     }
   } catch (e) {
-    console.warn("[ai-edit:" + body.provider + "] Usage increment failed:", e.message);
+    console.warn("[ai-edit:" + body.provider + "] Usage increment failed:", e.message || e);
   }
 
   return res.status(200).json({ html: validated.html });
