@@ -1119,9 +1119,9 @@
         <!-- AshnaAI - Pro group, populated dynamically by loadAshnaModels() -->
         <optgroup label="AshnaAI — Pro" id="ashna-optgroup" style="display:none;"></optgroup>
         <!-- OpenCode Zen group, populated dynamically by loadAiProviders() -->
-        <optgroup label="OpenCode Zen — free" id="opencode-optgroup" style="display:none;"></optgroup>
+        <optgroup label="OpenCode Zen — Pro" id="opencode-optgroup" style="display:none;"></optgroup>
         <!-- AgentRouter group, populated dynamically by loadAiProviders() -->
-        <optgroup label="AgentRouter — free" id="agentrouter-optgroup" style="display:none;"></optgroup>
+        <optgroup label="AgentRouter — Pro" id="agentrouter-optgroup" style="display:none;"></optgroup>
       </select>
     </div>
 
@@ -1754,15 +1754,28 @@
         // here without a registry lookup. The actual model ID is the part after
         // the colon. The request includes provider:"ashna" + the Firebase ID
         // token in the Authorization header (server verifies Pro status).
-        // --- OpenCode Zen + AgentRouter branch (free tier, server-side key) ---
-        // Same as Gemini free tier — sends to /api/ai-edit with provider + model.
-        // No Bearer token needed (not Pro-gated). Shares the 10/day limit with Gemini.
+        // --- OpenCode Zen + AgentRouter branch (Pro-only, server-side key + Firebase token) ---
+        // Same flow as Ashna: get Firebase ID token → send to /api/ai-edit with
+        // provider + model + Authorization: Bearer header. Server verifies Pro + 50/day cap.
         if (modelChoice && (modelChoice.indexOf("opencode:") === 0 || modelChoice.indexOf("agentrouter:") === 0)) {
           const providerId = modelChoice.indexOf("opencode:") === 0 ? "opencode" : "agentrouter";
           const providerModelId = modelChoice.slice((providerId + ":").length);
+          let idToken = null;
+          try {
+            idToken = await getIdTokenForAdmin();
+          } catch (e) {
+            console.warn("[" + providerId + "] getIdTokenForAdmin threw:", e.message);
+          }
+          if (!idToken) {
+            toast("Session expired — sign out and back in", "error");
+            throw new Error("Session expired — sign out and back in to use this AI provider");
+          }
           const res = await fetch("/api/ai-edit", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": "Bearer " + idToken,
+            },
             body: JSON.stringify({
               provider: providerId,
               model: providerModelId,
@@ -1775,10 +1788,19 @@
           });
           if (!res.ok) {
             const errData = await res.json().catch(() => ({}));
+            if (res.status === 401) {
+              toast("Session expired — sign out and back in", "error");
+              throw new Error("Session expired — sign out and back in.");
+            }
+            if (res.status === 403 && errData.proRequired) {
+              if (typeof showProUpgrade === "function") {
+                showProUpgrade(providerId === "opencode" ? "OpenCode Zen" : "AgentRouter", errData.error || "Pro required");
+              }
+              throw new Error(errData.error || "Pro required");
+            }
             throw new Error(errData.error || "AI edit failed");
           }
           html = (await res.json()).html;
-          bumpLocalUsageDisplay();
         }
         // --- Ashna branch (Pro-only, server-side key + Firebase token) ---
         else if (modelChoice && modelChoice.indexOf("ashna:") === 0) {
@@ -2041,21 +2063,21 @@ Return ONLY the raw HTML:`;
       const modelChoice = document.getElementById("ai-model").value;
       const row = document.getElementById("ai-byok-row");
       const saved = document.getElementById("ai-byok-saved");
-      // Server-side-key models (Ashna, OpenCode, AgentRouter) — no BYOK row needed
+      // Server-side-key models (Ashna, OpenCode, AgentRouter) — all Pro-only — no BYOK row
       if (modelChoice && (modelChoice.indexOf("ashna:") === 0 || modelChoice.indexOf("opencode:") === 0 || modelChoice.indexOf("agentrouter:") === 0)) {
         row.style.display = "none";
         saved.style.display = "none";
-        // Ashna is Pro-only — show upgrade modal if non-Pro user picks it.
-        // OpenCode and AgentRouter are FREE — no Pro check needed.
-        if (modelChoice.indexOf("ashna:") === 0) {
-          const isPro = (window.kayhostUserPro === true) || (window.currentUser && window.currentUser.pro === true);
-          if (!isPro) {
-            document.getElementById("ai-model").value = "gemini";
-            if (typeof showProUpgrade === "function") {
-              showProUpgrade("AshnaAI", "AshnaAI is a Pro-only AI provider. Upgrade to use it for unlimited HTML edits with GLM 5.3, Claude, GPT, and more.");
-            } else {
-              toast("AshnaAI is a Pro feature", "info");
-            }
+        // All three are Pro-only — show upgrade modal if non-Pro user picks any of them
+        const isPro = (window.kayhostUserPro === true) || (window.currentUser && window.currentUser.pro === true);
+        if (!isPro) {
+          const providerName = modelChoice.indexOf("ashna:") === 0 ? "AshnaAI"
+                            : modelChoice.indexOf("opencode:") === 0 ? "OpenCode Zen"
+                            : "AgentRouter";
+          document.getElementById("ai-model").value = "gemini";
+          if (typeof showProUpgrade === "function") {
+            showProUpgrade(providerName, providerName + " is a Pro-only AI provider. Upgrade to Pro to use it.");
+          } else {
+            toast(providerName + " is a Pro feature", "info");
           }
         }
         renderUsageBadge();
@@ -2130,7 +2152,7 @@ Return ONLY the raw HTML:`;
           const optgroup = document.getElementById(optgroupId);
           if (!optgroup) continue;
           optgroup.innerHTML = p.models.map(function(m) {
-            return '<option value="' + p.id + ':' + escapeHtml(m.id) + '">' + escapeHtml(m.displayName || m.id) + ' — free</option>';
+            return '<option value="' + p.id + ':' + escapeHtml(m.id) + '">' + escapeHtml(m.displayName || m.id) + ' — Pro</option>';
           }).join("");
           optgroup.style.display = "";
           console.log("[ai-providers] Populated", p.label, "with", p.models.length, "models");
