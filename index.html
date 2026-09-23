@@ -1118,6 +1118,10 @@
         <option value="gpt">GPT-5.5 — bring your key</option>
         <!-- AshnaAI - Pro group, populated dynamically by loadAshnaModels() -->
         <optgroup label="AshnaAI — Pro" id="ashna-optgroup" style="display:none;"></optgroup>
+        <!-- OpenCode Zen group, populated dynamically by loadAiProviders() -->
+        <optgroup label="OpenCode Zen — free" id="opencode-optgroup" style="display:none;"></optgroup>
+        <!-- AgentRouter group, populated dynamically by loadAiProviders() -->
+        <optgroup label="AgentRouter — free" id="agentrouter-optgroup" style="display:none;"></optgroup>
       </select>
     </div>
 
@@ -1750,7 +1754,34 @@
         // here without a registry lookup. The actual model ID is the part after
         // the colon. The request includes provider:"ashna" + the Firebase ID
         // token in the Authorization header (server verifies Pro status).
-        if (modelChoice && modelChoice.indexOf("ashna:") === 0) {
+        // --- OpenCode Zen + AgentRouter branch (free tier, server-side key) ---
+        // Same as Gemini free tier — sends to /api/ai-edit with provider + model.
+        // No Bearer token needed (not Pro-gated). Shares the 10/day limit with Gemini.
+        if (modelChoice && (modelChoice.indexOf("opencode:") === 0 || modelChoice.indexOf("agentrouter:") === 0)) {
+          const providerId = modelChoice.indexOf("opencode:") === 0 ? "opencode" : "agentrouter";
+          const providerModelId = modelChoice.slice((providerId + ":").length);
+          const res = await fetch("/api/ai-edit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              provider: providerId,
+              model: providerModelId,
+              html: (typeof _files !== "undefined" && _files.length > 1) ? mergeFilesToHtml() : currentHtml,
+              selector: selectedSelector,
+              instruction: inst,
+              browserId: getBrowserId(),
+            }),
+            signal: controller.signal,
+          });
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || "AI edit failed");
+          }
+          html = (await res.json()).html;
+          bumpLocalUsageDisplay();
+        }
+        // --- Ashna branch (Pro-only, server-side key + Firebase token) ---
+        else if (modelChoice && modelChoice.indexOf("ashna:") === 0) {
           const ashnaModelId = modelChoice.slice("ashna:".length);
           // Get a Firebase ID token to send to the server.
           // The server uses this to verify the user's identity + Pro status.
@@ -1966,9 +1997,8 @@ Return ONLY the raw HTML:`;
       const el = document.getElementById("ai-usage-badge");
       if (!el) return;
       const modelChoice = document.getElementById("ai-model").value;
-      // Ashna models use server-side Pro auth, not the free BYOK system.
-      // Hide the free-usage badge entirely for Ashna selections.
-      if (modelChoice && modelChoice.indexOf("ashna:") === 0) {
+      // Server-side-key models (Ashna, OpenCode, AgentRouter) — hide the free-usage badge.
+      if (modelChoice && (modelChoice.indexOf("ashna:") === 0 || modelChoice.indexOf("opencode:") === 0 || modelChoice.indexOf("agentrouter:") === 0)) {
         el.style.display = "none";
         return;
       }
@@ -1987,8 +2017,8 @@ Return ONLY the raw HTML:`;
     }
     function saveByokKey() {
       const modelChoice = document.getElementById("ai-model").value;
-      // Ashna models don't use BYOK — no-op
-      if (modelChoice && modelChoice.indexOf("ashna:") === 0) return;
+      // Server-side-key models (Ashna, OpenCode, AgentRouter) don't use BYOK — no-op
+      if (modelChoice && (modelChoice.indexOf("ashna:") === 0 || modelChoice.indexOf("opencode:") === 0 || modelChoice.indexOf("agentrouter:") === 0)) return;
       const provider = AI_PROVIDERS[modelChoice];
       if (!provider) return;
       const val = document.getElementById("ai-byok-key").value.trim();
@@ -2000,8 +2030,8 @@ Return ONLY the raw HTML:`;
     }
     function clearByokKey() {
       const modelChoice = document.getElementById("ai-model").value;
-      // Ashna models don't use BYOK — no-op
-      if (modelChoice && modelChoice.indexOf("ashna:") === 0) return;
+      // Server-side-key models (Ashna, OpenCode, AgentRouter) don't use BYOK — no-op
+      if (modelChoice && (modelChoice.indexOf("ashna:") === 0 || modelChoice.indexOf("opencode:") === 0 || modelChoice.indexOf("agentrouter:") === 0)) return;
       const provider = AI_PROVIDERS[modelChoice];
       if (!provider) return;
       removeByokKey(provider.byokProvider);
@@ -2011,21 +2041,21 @@ Return ONLY the raw HTML:`;
       const modelChoice = document.getElementById("ai-model").value;
       const row = document.getElementById("ai-byok-row");
       const saved = document.getElementById("ai-byok-saved");
-      // Ashna models use a server-side key + Pro check — no BYOK row, no key input
-      if (modelChoice && modelChoice.indexOf("ashna:") === 0) {
+      // Server-side-key models (Ashna, OpenCode, AgentRouter) — no BYOK row needed
+      if (modelChoice && (modelChoice.indexOf("ashna:") === 0 || modelChoice.indexOf("opencode:") === 0 || modelChoice.indexOf("agentrouter:") === 0)) {
         row.style.display = "none";
         saved.style.display = "none";
-        // UX gate: if user is not Pro, surface the upgrade modal instead of letting
-        // them try (and get a 403 server-side). This is UX only — the server check is
-        // the real security gate.
-        const isPro = (window.kayhostUserPro === true) || (window.currentUser && window.currentUser.pro === true);
-        if (!isPro) {
-          // Reset to Gemini to avoid leaving an unusable option selected
-          document.getElementById("ai-model").value = "gemini";
-          if (typeof showProUpgrade === "function") {
-            showProUpgrade("AshnaAI", "AshnaAI is a Pro-only AI provider. Upgrade to use it for unlimited HTML edits with GLM 5.3, Claude, GPT, and more.");
-          } else {
-            toast("AshnaAI is a Pro feature", "info");
+        // Ashna is Pro-only — show upgrade modal if non-Pro user picks it.
+        // OpenCode and AgentRouter are FREE — no Pro check needed.
+        if (modelChoice.indexOf("ashna:") === 0) {
+          const isPro = (window.kayhostUserPro === true) || (window.currentUser && window.currentUser.pro === true);
+          if (!isPro) {
+            document.getElementById("ai-model").value = "gemini";
+            if (typeof showProUpgrade === "function") {
+              showProUpgrade("AshnaAI", "AshnaAI is a Pro-only AI provider. Upgrade to use it for unlimited HTML edits with GLM 5.3, Claude, GPT, and more.");
+            } else {
+              toast("AshnaAI is a Pro feature", "info");
+            }
           }
         }
         renderUsageBadge();
@@ -2075,9 +2105,43 @@ Return ONLY the raw HTML:`;
         console.warn("[ashna] Couldn't load AshnaAI catalog:", e.message || e);
       }
     }
-    // Trigger the catalog fetch on page load
+    // Trigger the AshnaAI catalog fetch on page load
     if (document.readyState !== "loading") loadAshnaModels();
     else document.addEventListener("DOMContentLoaded", loadAshnaModels);
+
+    // --- OpenCode Zen + AgentRouter catalog loader (free-tier providers) ---
+    // Fetches /api/ai-providers on load. If OPENCODE_API_KEY is set, the OpenCode Zen
+    // optgroup gets populated. If AGENTROUTER_API_KEY is set, the AgentRouter optgroup
+    // gets populated. If neither is set, both stay hidden and Gemini is the default.
+    let _aiProvidersLoaded = false;
+    async function loadAiProviders() {
+      if (_aiProvidersLoaded) return;
+      _aiProvidersLoaded = true;
+      try {
+        console.log("[ai-providers] Fetching /api/ai-providers...");
+        const res = await fetch("/api/ai-providers", { cache: "no-store" });
+        if (!res.ok) { console.warn("[ai-providers] HTTP", res.status); return; }
+        const data = await res.json();
+        const providers = (data && Array.isArray(data.providers)) ? data.providers : [];
+        console.log("[ai-providers] Got", providers.length, "providers:", providers.map(p => p.id).join(", "));
+        for (const p of providers) {
+          const optgroupId = p.id === "opencode" ? "opencode-optgroup" : p.id === "agentrouter" ? "agentrouter-optgroup" : null;
+          if (!optgroupId) continue;
+          const optgroup = document.getElementById(optgroupId);
+          if (!optgroup) continue;
+          optgroup.innerHTML = p.models.map(function(m) {
+            return '<option value="' + p.id + ':' + escapeHtml(m.id) + '">' + escapeHtml(m.displayName || m.id) + ' — free</option>';
+          }).join("");
+          optgroup.style.display = "";
+          console.log("[ai-providers] Populated", p.label, "with", p.models.length, "models");
+        }
+      } catch (e) {
+        console.warn("[ai-providers] Couldn't load:", e.message || e);
+      }
+    }
+    if (document.readyState !== "loading") loadAiProviders();
+    else document.addEventListener("DOMContentLoaded", loadAiProviders);
+
     function insertAiChip(text) {
       const el = document.getElementById("ai-instruction");
       el.value = text; el.focus();
