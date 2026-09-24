@@ -1049,7 +1049,7 @@
           </ul>
         </div>
         <div style="padding:14px 20px;border-top:1px solid var(--border);">
-          <button class="btn btn-block btn-sm" style="background:#f59e0b;color:#000;font-weight:700;border:none;" onclick="if(window.kayhostUserPro){toast('You&#39;re already Pro','info');}else{startProUpgrade();}">Upgrade to Pro →</button>
+          <button class="btn btn-block btn-sm" style="background:#f59e0b;color:#000;font-weight:700;border:none;" onclick="if(window.kayhostUserPro){toast('You\\'re already Pro','info');}else{startProUpgrade();}">Upgrade to Pro →</button>
         </div>
       </div>
     </div>
@@ -1688,7 +1688,6 @@
         if (chip) chip.style.display = "flex";
       } else {
         iframe.classList.remove("editing");
-        try { iframe.contentWindow.__ke = false; } catch (e2) {}
         if (btn) { btn.innerHTML = '<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"12 2 15 9 22 9 17 14 19 22 12 18 5 22 7 14 2 9 9 9\"/></svg><span>AI</span>'; btn.style.background = ""; btn.style.color = ""; }
         closeAiPanel();
         if (overlay) overlay.style.display = "none";
@@ -1734,11 +1733,6 @@
         const s = doc.createElement("script");
         s.textContent = 'document.addEventListener("click",function(e){if(!window.__ke)return;e.preventDefault();e.stopPropagation();var p=document.querySelector("[data-ks]");if(p){p.style.outline="";delete p.dataset.ks;}e.target.style.outline="2px solid #A78BFA";e.target.dataset.ks="1";var sel="";var c=e.target;while(c&&c!==document.body){var s=c.tagName.toLowerCase();if(c.id){s="#"+c.id;}else{if(c.className&&typeof c.className==="string"){var cls=c.className.trim().split(/\\s+/).slice(0,2).join(".");if(cls)s+="."+cls;}var p2=c.parentElement;if(p2){var sib=Array.from(p2.children).filter(function(x){return x.tagName===c.tagName});if(sib.length>1)s+=":nth-of-type("+(sib.indexOf(c)+1)+")";}}sel=s+(sel?" > ":"")+sel;c=c.parentElement;}window.parent.postMessage({type:"ks",selector:sel},"*");},true);';
         doc.body.appendChild(s);
-        // The injected listener gates on window.__ke inside the IFRAME's own
-        // window (a separate JS realm from the parent page) — it was never
-        // actually being set anywhere, so every click silently no-op'd. This
-        // is the actual switch that turns element-click-to-select on.
-        try { iframe.contentWindow.__ke = true; } catch (e2) {}
       } catch (e) {}
     }
     window.addEventListener("message", (e) => {
@@ -3226,37 +3220,12 @@ Return ONLY the raw HTML:`;
           return await auth.currentUser.getIdToken(true);
         }
       } catch (e) {}
-      // Path 2: REST API email/password sign-in. The stored idToken hard-expires
-      // after 1 hour with no other refresh path, which is exactly why this used
-      // to start throwing "session expired" after sitting signed-in for a while
-      // — the token really was expired, every time. Fix: always exchange the
-      // (long-lived) refreshToken — stored alongside idToken at sign-in — for a
-      // fresh idToken via Firebase's public token-refresh endpoint first. The
-      // apiKey below is the public Web API key (safe for client use, same one
-      // already in firebaseConfig above) — not a secret.
+      // Path 2: REST API email/password sign-in — idToken stored in localStorage
+      // under "kayhost-user" as part of the userData object
       try {
         const stored = localStorage.getItem("kayhost-user");
         if (stored) {
           const userData = JSON.parse(stored);
-          if (userData && userData.refreshToken) {
-            try {
-              const res = await fetch("https://securetoken.googleapis.com/v1/token?key=AIzaSyB7BBI11ZGrKJ3P24RF9ja49FWHeX3kImQ", {
-                method: "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body: "grant_type=refresh_token&refresh_token=" + encodeURIComponent(userData.refreshToken),
-              });
-              if (res.ok) {
-                const data = await res.json();
-                userData.idToken = data.id_token;
-                userData.refreshToken = data.refresh_token;
-                localStorage.setItem("kayhost-user", JSON.stringify(userData));
-                return data.id_token;
-              }
-              // Refresh itself failed (refresh token revoked/invalid) — fall
-              // through to the stale idToken below so normal "sign in again"
-              // handling still kicks in, correctly this time.
-            } catch (e) { console.warn("[auth] Token refresh failed:", e.message); }
-          }
           if (userData && userData.idToken) {
             return userData.idToken;
           }
@@ -3806,13 +3775,11 @@ Return ONLY the raw HTML:`;
     window.loadPaystackScript = loadPaystackScript;
 
     window.startProUpgrade = async function() {
+      console.log("[paystack] startProUpgrade called");
       // Need a signed-in user — can't pay anonymously
       const u = window.currentUser || null;
+      console.log("[paystack] currentUser:", u ? u.email : "null");
       if (!u || !u.email) {
-        // Queue the upgrade — after the user signs in, we'll auto-resume.
-        // This fixes the "I clicked Upgrade but nothing happened" UX: instead
-        // of just showing a toast, we remember the intent and trigger it
-        // automatically once sign-in completes.
         window._pendingProUpgrade = true;
         closeProUpgrade();
         document.getElementById("signin-modal").classList.remove("hidden");
@@ -3820,51 +3787,53 @@ Return ONLY the raw HTML:`;
         return;
       }
 
-      // Clear the pending flag (we're proceeding now)
       window._pendingProUpgrade = false;
-
-      // Generate a unique payment reference (Paystack requires one)
       const reference = "kay-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+      console.log("[paystack] Reference:", reference);
 
-      // Verify Paystack inline is loaded. If not, try to load it dynamically
-      // (the <script src="..."> at the bottom of body might have been blocked
-      // by an ad blocker or failed due to slow network).
+      // Try to load Paystack if not already loaded
       if (typeof PaystackPop === "undefined") {
-        // Try to dynamically inject the Paystack script and wait for it
+        console.log("[paystack] PaystackPop not loaded — trying dynamic load...");
         const loaded = await loadPaystackScript();
+        console.log("[paystack] Dynamic load result:", loaded);
         if (!loaded) {
           toast("Couldn't load Paystack. Check your internet or disable ad blockers, then try again.", "error");
           return;
         }
+      } else {
+        console.log("[paystack] PaystackPop already loaded ✓");
       }
 
-      // Close the Pro upgrade modal so the Paystack popup is visible
       closeProUpgrade();
-
-      // Open the Paystack inline popup
-      const handler = PaystackPop.setup({
-        key: PAYSTACK_PUBLIC_KEY,
-        email: u.email,
-        amount: PRO_AMOUNT_KOBO, // in kobo
-        currency: "NGN",
-        ref: reference,
-        metadata: {
-          custom_fields: [
-            { display_name: "Account", variable_name: "account_email", value: u.email },
-            { display_name: "Plan", variable_name: "plan", value: "Pro — 2 months" },
-          ]
-        },
-        callback: function(response) {
-          // Payment popup closed — Paystack says it paid (but we verify server-side)
-          verifyPaystackPayment(response.reference, u.email);
-        },
-        onClose: function() {
-          // User closed the popup without completing payment
-          // Don't show any UI — they just cancelled
-          console.log("[paystack] User closed popup without completing payment.");
-        }
-      });
-      handler.openIframe();
+      console.log("[paystack] Setting up Paystack popup...");
+      try {
+        const handler = PaystackPop.setup({
+          key: PAYSTACK_PUBLIC_KEY,
+          email: u.email,
+          amount: PRO_AMOUNT_KOBO,
+          currency: "NGN",
+          ref: reference,
+          metadata: {
+            custom_fields: [
+              { display_name: "Account", variable_name: "account_email", value: u.email },
+              { display_name: "Plan", variable_name: "plan", value: "Pro — 2 months" },
+            ]
+          },
+          callback: function(response) {
+            console.log("[paystack] Payment callback:", response.reference);
+            verifyPaystackPayment(response.reference, u.email);
+          },
+          onClose: function() {
+            console.log("[paystack] Popup closed by user");
+          }
+        });
+        console.log("[paystack] Handler created, opening iframe...");
+        handler.openIframe();
+        console.log("[paystack] openIframe() called");
+      } catch (err) {
+        console.error("[paystack] Error opening popup:", err.message || err);
+        toast("Paystack error: " + (err.message || "could not open popup"), "error");
+      }
     };
 
     // Server-side verify the payment, then mark the user as Pro
