@@ -3220,12 +3220,37 @@ Return ONLY the raw HTML:`;
           return await auth.currentUser.getIdToken(true);
         }
       } catch (e) {}
-      // Path 2: REST API email/password sign-in — idToken stored in localStorage
-      // under "kayhost-user" as part of the userData object
+      // Path 2: REST API email/password sign-in. The stored idToken hard-expires
+      // after 1 hour with no other refresh path, which is exactly why this used
+      // to start throwing "session expired" after sitting signed-in for a while
+      // — the token really was expired, every time. Fix: always exchange the
+      // (long-lived) refreshToken — stored alongside idToken at sign-in — for a
+      // fresh idToken via Firebase's public token-refresh endpoint first. The
+      // apiKey below is the public Web API key (safe for client use, same one
+      // already in firebaseConfig above) — not a secret.
       try {
         const stored = localStorage.getItem("kayhost-user");
         if (stored) {
           const userData = JSON.parse(stored);
+          if (userData && userData.refreshToken) {
+            try {
+              const res = await fetch("https://securetoken.googleapis.com/v1/token?key=AIzaSyB7BBI11ZGrKJ3P24RF9ja49FWHeX3kImQ", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: "grant_type=refresh_token&refresh_token=" + encodeURIComponent(userData.refreshToken),
+              });
+              if (res.ok) {
+                const data = await res.json();
+                userData.idToken = data.id_token;
+                userData.refreshToken = data.refresh_token;
+                localStorage.setItem("kayhost-user", JSON.stringify(userData));
+                return data.id_token;
+              }
+              // Refresh itself failed (refresh token revoked/invalid) — fall
+              // through to the stale idToken below so normal "sign in again"
+              // handling still kicks in, correctly this time.
+            } catch (e) { console.warn("[auth] Token refresh failed:", e.message); }
+          }
           if (userData && userData.idToken) {
             return userData.idToken;
           }
