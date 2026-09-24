@@ -1688,6 +1688,7 @@
         if (chip) chip.style.display = "flex";
       } else {
         iframe.classList.remove("editing");
+        try { iframe.contentWindow.__ke = false; } catch (e2) {}
         if (btn) { btn.innerHTML = '<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"12 2 15 9 22 9 17 14 19 22 12 18 5 22 7 14 2 9 9 9\"/></svg><span>AI</span>'; btn.style.background = ""; btn.style.color = ""; }
         closeAiPanel();
         if (overlay) overlay.style.display = "none";
@@ -1733,6 +1734,11 @@
         const s = doc.createElement("script");
         s.textContent = 'document.addEventListener("click",function(e){if(!window.__ke)return;e.preventDefault();e.stopPropagation();var p=document.querySelector("[data-ks]");if(p){p.style.outline="";delete p.dataset.ks;}e.target.style.outline="2px solid #A78BFA";e.target.dataset.ks="1";var sel="";var c=e.target;while(c&&c!==document.body){var s=c.tagName.toLowerCase();if(c.id){s="#"+c.id;}else{if(c.className&&typeof c.className==="string"){var cls=c.className.trim().split(/\\s+/).slice(0,2).join(".");if(cls)s+="."+cls;}var p2=c.parentElement;if(p2){var sib=Array.from(p2.children).filter(function(x){return x.tagName===c.tagName});if(sib.length>1)s+=":nth-of-type("+(sib.indexOf(c)+1)+")";}}sel=s+(sel?" > ":"")+sel;c=c.parentElement;}window.parent.postMessage({type:"ks",selector:sel},"*");},true);';
         doc.body.appendChild(s);
+        // The injected listener gates on window.__ke inside the IFRAME's own
+        // window (a separate JS realm from the parent page) — it was never
+        // actually being set anywhere, so every click silently no-op'd. This
+        // is the actual switch that turns element-click-to-select on.
+        try { iframe.contentWindow.__ke = true; } catch (e2) {}
       } catch (e) {}
     }
     window.addEventListener("message", (e) => {
