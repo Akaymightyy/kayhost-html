@@ -3252,28 +3252,86 @@ Return ONLY the raw HTML:`;
     // Get the current user's Firebase ID token (for Authorization: Bearer header).
     // Tries the Firebase SDK first (Google/GitHub popup sign-in). If that fails
     // (e.g. user signed in via email/password REST API), falls back to the
-    // idToken stored in localStorage by the REST sign-in flow.
+    // idToken stored in localStorage. If the stored token is EXPIRED, tries to
+    // refresh it using the refreshToken (Firebase's securetoken API).
     async function getIdTokenForAdmin() {
       // Path 1: Firebase SDK — works for Google/GitHub popup sign-ins
       try {
         if (typeof auth !== "undefined" && auth && auth.currentUser) {
-          return await auth.currentUser.getIdToken(true);
+          return await auth.currentUser.getIdToken(true);  // true = force refresh
         }
       } catch (e) {}
-      // Path 2: REST API email/password sign-in — idToken stored in localStorage
-      // under "kayhost-user" as part of the userData object
+      // Path 2: REST API email/password sign-in — idToken + refreshToken in localStorage
       try {
         const stored = localStorage.getItem("kayhost-user");
         if (stored) {
           const userData = JSON.parse(stored);
           if (userData && userData.idToken) {
+            // Check if the token is expired (decode JWT, check 'exp' field)
+            const isExpired = isTokenExpired(userData.idToken);
+            if (!isExpired) {
+              return userData.idToken;  // still valid
+            }
+            // Token is expired — try to refresh using refreshToken
+            if (userData.refreshToken) {
+              console.log("[auth] ID token expired, refreshing...");
+              const newToken = await refreshIdToken(userData.refreshToken);
+              if (newToken) {
+                // Save the new token back to localStorage
+                userData.idToken = newToken;
+                localStorage.setItem("kayhost-user", JSON.stringify(userData));
+                console.log("[auth] Token refreshed successfully");
+                return newToken;
+              }
+            }
+            // Can't refresh — return the expired token (server will reject with 401)
+            console.warn("[auth] Token expired and refresh failed");
             return userData.idToken;
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn("[auth] getIdTokenForAdmin error:", e.message);
+      }
       return null;
     }
     window.getIdTokenForAdmin = getIdTokenForAdmin;
+
+    // Check if a Firebase ID token (JWT) is expired.
+    // Firebase tokens expire after 1 hour. We decode the JWT payload (no verification
+    // needed — the server verifies with the Admin SDK) and check the 'exp' field.
+    function isTokenExpired(idToken) {
+      try {
+        const payload = JSON.parse(atob(idToken.split(".")[1]));
+        const exp = payload.exp || 0;
+        const now = Math.floor(Date.now() / 1000);
+        // Consider it expired 5 minutes before actual expiry (buffer)
+        return now >= (exp - 300);
+      } catch (e) {
+        return false;  // Can't decode — assume valid (let the server decide)
+      }
+    }
+
+    // Refresh a Firebase ID token using the refresh token.
+    // Uses Firebase's securetoken API — no Admin SDK needed.
+    async function refreshIdToken(refreshToken) {
+      try {
+        const FIREBASE_API_KEY = "AIzaSyB7BBI11ZGrKJ3P24RF9ja49FWHeX3kImQ";
+        const res = await fetch(
+          `https://securetoken.googleapis.com/v1/token?key=${FIREBASE_API_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: `grant_type=refresh_token&refresh_token=${refreshToken}`,
+          }
+        );
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data.id_token || null;
+      } catch (e) {
+        console.warn("[auth] Token refresh failed:", e.message);
+        return null;
+      }
+    }
 
     // --- Admin dashboard ---
     window.switchAdminTab = function(tab) {
