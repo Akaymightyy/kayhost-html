@@ -1638,10 +1638,15 @@
     }
     function updatePreview() {
       const iframe = document.getElementById("preview-iframe");
-      // If in multi-file mode, merge all files into one HTML blob for the preview
       const htmlToRender = (typeof _files !== "undefined" && _files.length > 1) ? mergeFilesToHtml() : currentHtml;
       iframe.srcdoc = htmlToRender;
-      iframe.onload = () => { if (editing) wireElementClicks(iframe); };
+      // After the iframe reloads, if AI edit mode is ON, re-inject the click handler
+      // (setting srcdoc replaces all content including the injected script)
+      iframe.onload = () => {
+        if (editing) {
+          wireElementClicks(iframe);
+        }
+      };
     }
 
     // --- Deploy ---
@@ -1715,9 +1720,8 @@
       const chip = document.getElementById("edit-entire-page-chip");
       if (editing) {
         iframe.classList.add("editing");
-        // Re-render the AI-toggle button content (icon + label)
         if (btn) { btn.innerHTML = '<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"12 2 15 9 22 9 17 14 19 22 12 18 5 22 7 14 2 9 9 9\"/></svg><span>Stop AI</span>'; btn.style.background = "rgba(245,158,11,0.15)"; btn.style.color = "#f59e0b"; }
-        toast("Click any element to edit with AI", "success");
+        toast("✋ Click any element in the preview to edit it with AI", "success");
         wireElementClicks(iframe);
         document.getElementById("ai-panel").classList.add("open");
         document.getElementById("ai-overlay").classList.add("visible");
@@ -1728,6 +1732,7 @@
         if (chip) chip.style.display = "flex";
       } else {
         iframe.classList.remove("editing");
+        unwireElementClicks(iframe);  // turn off the click handler
         if (btn) { btn.innerHTML = '<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"12 2 15 9 22 9 17 14 19 22 12 18 5 22 7 14 2 9 9 9\"/></svg><span>AI</span>'; btn.style.background = ""; btn.style.color = ""; }
         closeAiPanel();
         if (overlay) overlay.style.display = "none";
@@ -1740,7 +1745,11 @@
       try { window.Tawk_API && window.Tawk_API.showWidget && window.Tawk_API.showWidget(); } catch (e) {}
       document.body.classList.remove("ai-editing-active");
       editing = false;
-      document.getElementById("preview-iframe").classList.remove("editing");
+      const iframe = document.getElementById("preview-iframe");
+      if (iframe) {
+        iframe.classList.remove("editing");
+        unwireElementClicks(iframe);
+      }
       const btn = document.getElementById("ai-toggle");
       if (btn) { btn.innerHTML = '<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"12 2 15 9 22 9 17 14 19 22 12 18 5 22 7 14 2 9 9 9\"/></svg><span>AI</span>'; btn.style.background = ""; btn.style.color = ""; }
       const overlay = document.getElementById("ai-instruction-overlay");
@@ -1769,11 +1778,26 @@
     };
     function wireElementClicks(iframe) {
       try {
-        const doc = iframe.contentDocument; if (!doc) return;
+        const doc = iframe.contentDocument;
+        if (!doc || !doc.body) {
+          // Iframe not ready yet — retry in 300ms
+          setTimeout(function() { wireElementClicks(iframe); }, 300);
+          return;
+        }
+        // SET THE EDITING FLAG — this is what was missing!
+        // Without this, the click handler checks `if(!window.__ke)return;` and does nothing.
+        try { iframe.contentWindow.__ke = true; } catch (e) {}
+        // Inject the click handler script
         const s = doc.createElement("script");
         s.textContent = 'document.addEventListener("click",function(e){if(!window.__ke)return;e.preventDefault();e.stopPropagation();var p=document.querySelector("[data-ks]");if(p){p.style.outline="";delete p.dataset.ks;}e.target.style.outline="2px solid #A78BFA";e.target.dataset.ks="1";var sel="";var c=e.target;while(c&&c!==document.body){var s=c.tagName.toLowerCase();if(c.id){s="#"+c.id;}else{if(c.className&&typeof c.className==="string"){var cls=c.className.trim().split(/\\s+/).slice(0,2).join(".");if(cls)s+="."+cls;}var p2=c.parentElement;if(p2){var sib=Array.from(p2.children).filter(function(x){return x.tagName===c.tagName});if(sib.length>1)s+=":nth-of-type("+(sib.indexOf(c)+1)+")";}}sel=s+(sel?" > ":"")+sel;c=c.parentElement;}window.parent.postMessage({type:"ks",selector:sel},"*");},true);';
         doc.body.appendChild(s);
-      } catch (e) {}
+      } catch (e) {
+        console.warn("[ai-edit] wireElementClicks failed:", e.message);
+      }
+    }
+    // Unset the editing flag when leaving edit mode
+    function unwireElementClicks(iframe) {
+      try { iframe.contentWindow.__ke = false; } catch (e) {}
     }
     window.addEventListener("message", (e) => {
       if (e.data.type === "ks") {
