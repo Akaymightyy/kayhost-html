@@ -1776,7 +1776,69 @@
       } catch (e) {}
     }
     window.addEventListener("message", (e) => {
-      if (e.data.type === "ks") { selectedSelector = e.data.selector; document.getElementById("ai-selector").textContent = "Selected: " + e.data.selector; }
+      if (e.data.type === "ks") {
+        selectedSelector = e.data.selector;
+        const selEl = document.getElementById("ai-selector");
+        if (selEl) selEl.textContent = "Selected: " + e.data.selector;
+        // MOBILE FIX: After clicking an element, explicitly focus the AI instruction
+        // input so the keyboard stays up. Without this, the keyboard closes because
+        // the click happened inside the iframe (which doesn't have focus on mobile).
+        const instEl = document.getElementById("ai-instruction");
+        if (instEl) {
+          setTimeout(function() { instEl.focus({ preventScroll: false }); }, 200);
+        }
+      }
+    });
+
+    // --- Triple-click on preview → toggle AI edit mode ---
+    // Same pattern as triple-clicking the logo for admin. When the user
+    // triple-clicks anywhere on the preview toolbar or the area around the
+    // iframe, toggle AI editing mode. This is easier on mobile than finding
+    // the tiny "AI" button.
+    let _previewClickCount = 0;
+    document.addEventListener("DOMContentLoaded", function initPreviewTripleClick() {
+      const previewWrap = document.getElementById("preview-wrap");
+      if (!previewWrap) { setTimeout(initPreviewTripleClick, 300); return; }
+
+      // Listen on the toolbar bar (above the iframe) — clicks on the iframe
+      // itself are captured by the iframe, but the toolbar and border areas
+      // will register triple-clicks.
+      const previewBar = previewWrap.querySelector(".preview-bar") || previewWrap;
+      previewBar.addEventListener("click", function(e) {
+        // Don't trigger if clicking a button inside the bar
+        if (e.target.closest("button")) return;
+        _previewClickCount++;
+        clearTimeout(previewBar._tcTimer);
+        previewBar._tcTimer = setTimeout(function() {
+          _previewClickCount = 0;
+        }, 600);
+        if (_previewClickCount >= 3) {
+          _previewClickCount = 0;
+          // Toggle AI edit mode
+          if (typeof toggleAiEdit === "function") {
+            toggleAiEdit();
+            toast("AI edit mode toggled — click any element to edit", "info");
+          }
+        }
+      });
+
+      // Also add triple-click on the iframe wrapper (the div around the iframe)
+      const iframeWrapper = previewWrap.querySelector('div[style*="position:relative"]') || previewWrap;
+      iframeWrapper.addEventListener("click", function(e) {
+        // This fires when clicking on the border/overlay areas around the iframe
+        _previewClickCount++;
+        clearTimeout(iframeWrapper._tcTimer);
+        iframeWrapper._tcTimer = setTimeout(function() {
+          _previewClickCount = 0;
+        }, 600);
+        if (_previewClickCount >= 3) {
+          _previewClickCount = 0;
+          if (typeof toggleAiEdit === "function") {
+            toggleAiEdit();
+            toast("AI edit mode toggled — click any element to edit", "info");
+          }
+        }
+      });
     });
     async function applyAiEdit() {
       const inst = document.getElementById("ai-instruction").value.trim();
