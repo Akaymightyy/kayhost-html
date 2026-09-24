@@ -55,7 +55,7 @@ module.exports = async (req, res) => {
     // --- OpenCode Zen + AgentRouter branches (Pro-only, 50/day per-user cap) ---
     // Same Pro-gating as Ashna: verify Firebase ID token → check pro === true →
     // validate model against catalog → check 50/day cap → call provider API.
-    if (provider === "opencode" || provider === "agentrouter") {
+    if (provider === "opencode" || provider === "openrouter") {
       return handleProProviderEdit(req, res, { html, selector, instruction, model, provider });
     }
 
@@ -383,8 +383,8 @@ async function handleProProviderEdit(req, res, body) {
   if (!body.model || typeof body.model !== "string" || body.model.length > 200) {
     return res.status(400).json({ error: "Valid model ID is required" });
   }
-  if (!body.provider || (body.provider !== "opencode" && body.provider !== "agentrouter")) {
-    return res.status(400).json({ error: "Provider must be 'opencode' or 'agentrouter'" });
+  if (!body.provider || (body.provider !== "opencode" && body.provider !== "openrouter")) {
+    return res.status(400).json({ error: "Provider must be 'opencode' or 'openrouter'" });
   }
 
   // --- Step 1: Verify the Firebase ID token (server-side) ---
