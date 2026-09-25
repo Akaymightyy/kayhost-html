@@ -1,77 +1,35 @@
-# KayHost HTML — Patch (Sept 25, 2026)
+# KayHost HTML — Patch v2 (Sept 25, 2026)
 
 ## What this patch fixes
 
-### 1. Free quota raised from 10 → 50 per provider
-**File:** `api/ai-edit.js`
+### The disappearing panel bug (FINALLY fixed)
 
-- `FREE_DAILY_LIMIT` changed from `10` to `50`
-- Each provider now has its OWN independent 50/day counter:
-  - Gemini: 50 edits/day (doc id: `browserId_gemini_YYYY-MM-DD`)
-  - OpenRouter: 50 edits/day (doc id: `browserId_openrouter_YYYY-MM-DD`)
-- Previously Gemini and OpenRouter SHARED a single 10/day counter — using 5 Gemini edits meant you only had 5 OpenRouter edits left. Now they're separate.
-- Pro providers (OpenCode Zen, Ashna) already had 50/day — unchanged.
-- Error messages updated to mention the other free provider as an alternative.
+**Root cause:** When you clicked "Apply Changes" in the FLOATING edit box (the small one that appears near the clicked element), `applyFloatingEdit()` called `hideFloatingEditBox()` IMMEDIATELY — then `applyAiEdit()` ran and showed the loading banner in the MAIN AI panel, which you couldn't see because you were using the floating box. So everything went invisible.
 
-### 2. Ashna provider gets Claude's JSON-parse-first fix
-**File:** `lib/ashna.js`
-
-- Previously `callAshnaChat()` called `res.json()` directly. If the upstream returned an HTML error page (firewall block, 5xx gateway), this threw an unhelpful "invalid JSON" error.
-- Now it follows the same pattern Claude applied to `lib/ai-providers.js`:
-  1. Read the response as text first
-  2. Try `JSON.parse()` — if it succeeds, trust it (even if the content mentions `<html>`)
-  3. Only if parse fails, check if the body STARTS with `<!doctype html` or `<html` (not "contains it anywhere")
-  4. If yes → clear "HTML error page" message. If no → "invalid response" message.
-
-### 3. Loading state on "Apply" — panel no longer disappears silently
-**File:** `index.html`
-
-**The bug:** Clicking "Apply" set a tiny spinner on the button, but:
-- The spinner was hard to see
-- Clicking the overlay or pressing Escape would close the panel mid-request
-- After success, only a brief toast appeared — easy to miss
-
-**The fix:**
-- Added `_aiLoading` flag that prevents `closeAiPanel()` from closing the panel while a request is in flight
-- Added a visible status banner inside the AI panel with three states:
-  - **Loading** (purple, spinner): "Generating… the AI is rewriting your HTML. This usually takes 5-15 seconds."
-  - **Success** (green, "OK"): "Change applied. The preview has been updated."
-  - **Error** (red, "!"): Shows the actual error message, e.g. "You've used all 50 free OpenRouter edits for today..."
-- The banner stays visible after success/error so the user always knows what happened
-- The panel cannot be closed (via overlay click or X button) while loading
-
-### 4. Dead file flagged for deletion
-**File:** `ai-providers.js` (project root)
-
-Claude flagged this — it's a stale older version that references "AgentRouter" (the old name) and has the original HTML false-positive bug. Nothing imports it (the real file is `lib/ai-providers.js`).
-
-**Action:** Delete `ai-providers.js` from the project root. It's not imported anywhere — confirmed by grepping the codebase.
-
----
+**The fix:** `applyFloatingEdit()` no longer hides the floating box during loading. Instead:
+1. The floating box stays visible
+2. The "Apply Changes" button text changes to "Generating…" and dims
+3. A purple status banner appears at the top of the floating box: "Generating… the AI is rewriting your HTML."
+4. On success → the floating box hides (normal behavior)
+5. On error → the floating box STAYS visible, the banner turns red with the error message, and the Apply button re-enables so you can retry
 
 ## Files in this patch
 
 | File | Action |
 |---|---|
-| `api/ai-edit.js` | Replace — quota 10→50, per-provider counter, better error messages |
-| `lib/ashna.js` | Replace — JSON-parse-first fix (same as Claude did for OpenRouter) |
-| `index.html` | Replace — loading banner + panel lock during generation |
-| `ai-providers.js` (root) | DELETE — dead code, nothing imports it |
-
----
+| `index.html` | Replace — fixes `applyFloatingEdit()` to show loading state in the floating box |
+| `README.md` | Replace — full rewrite reflecting v44 (multi-provider AI, click-to-edit UX, consolidated API, etc.) |
 
 ## How to apply
 
 1. Unzip this patch
-2. Replace `api/ai-edit.js` with the new version
-3. Replace `lib/ashna.js` with the new version
-4. Replace `index.html` with the new version
-5. **Delete** `ai-providers.js` from the project root (the one OUTSIDE `lib/` and `api/`)
-6. Commit and push — Vercel auto-deploys
+2. Replace `index.html` with the new version
+3. Replace `README.md` with the new version
+4. Commit and push — Vercel auto-deploys
 
 ## After deploying
 
-- Test with an OpenRouter model — should now work without false-positive HTML errors
-- Test the Apply button — you should see a purple "Generating…" banner that doesn't disappear
-- Test the quota — you now get 50 Gemini + 50 OpenRouter per day (100 total free edits)
-- Watch Vercel logs for `[ai-edit]` and `[ashna]` lines to confirm everything's flowing
+- Click any element in the preview → floating box appears → type instruction → click "Apply Changes"
+- The floating box should now STAY VISIBLE with a purple "Generating…" banner
+- On success it hides. On error it stays and shows the error in red.
+- The main AI panel (click the "AI" button in the toolbar) also still works with its own status banner.

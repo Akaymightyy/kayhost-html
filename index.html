@@ -2079,10 +2079,47 @@
       // Copy the floating instruction into the main AI instruction field
       var mainInst = document.getElementById("ai-instruction");
       if (mainInst) mainInst.value = inst.value;
-      // Hide the floating box
-      hideFloatingEditBox();
-      // Call the existing applyAiEdit
-      await applyAiEdit();
+
+      // --- Don't hide the floating box during loading ---
+      // Instead, show a visible loading state INSIDE the floating box so the
+      // user always knows the AI is generating. The box only hides on success.
+      var floatBox = document.getElementById("floating-edit-box");
+      var applyBtn = floatBox ? floatBox.querySelector('button.btn-purple') : null;
+      var cancelBtn = floatBox ? floatBox.querySelector('button.btn-ghost') : null;
+      if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = "Generating…"; applyBtn.style.opacity = "0.7"; }
+      if (cancelBtn) { cancelBtn.disabled = true; cancelBtn.style.opacity = "0.5"; }
+
+      // Inject a status line at the top of the floating box
+      var floatStatus = floatBox ? floatBox.querySelector('#floating-status') : null;
+      if (!floatStatus && floatBox) {
+        floatStatus = document.createElement("div");
+        floatStatus.id = "floating-status";
+        floatStatus.style.cssText = "padding:6px 8px;border-radius:6px;font-size:11px;margin-bottom:6px;display:flex;align-items:center;gap:6px;background:rgba(124,58,237,0.15);color:var(--purple-text,#c4b5fd);border:1px solid rgba(124,58,237,0.4);";
+        floatBox.insertBefore(floatStatus, floatBox.firstChild);
+      }
+      if (floatStatus) {
+        floatStatus.style.display = "flex";
+        floatStatus.style.background = "rgba(124,58,237,0.15)";
+        floatStatus.style.color = "var(--purple-text,#c4b5fd)";
+        floatStatus.style.borderColor = "rgba(124,58,237,0.4)";
+        floatStatus.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></span><span>Generating… the AI is rewriting your HTML.</span>';
+      }
+
+      try {
+        await applyAiEdit();
+        // applyAiEdit sets _aiLoading=false on its own. On success, hide the floating box.
+        hideFloatingEditBox();
+      } catch (e) {
+        // On error, keep the floating box visible and show the error in it
+        if (floatStatus) {
+          floatStatus.style.background = "rgba(239,68,68,0.15)";
+          floatStatus.style.color = "#ef4444";
+          floatStatus.style.borderColor = "rgba(239,68,68,0.4)";
+          floatStatus.innerHTML = '<span style="font-weight:700;">!</span><span>' + escapeHtml(e.message || "Something went wrong. Try again.") + '</span>';
+        }
+        if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = "Apply Changes"; applyBtn.style.opacity = "1"; }
+        if (cancelBtn) { cancelBtn.disabled = false; cancelBtn.style.opacity = "1"; }
+      }
     };
 
     // Update quick-action buttons in the floating box based on tag
