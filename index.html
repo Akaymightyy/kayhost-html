@@ -1851,38 +1851,156 @@
       if (!box) {
         box = document.createElement("div");
         box.id = "floating-edit-box";
-        box.style.cssText = "position:fixed;z-index:9000;display:none;background:var(--bg-card);border:1px solid var(--purple);border-radius:12px;padding:12px;box-shadow:0 8px 32px rgba(0,0,0,0.4);max-width:300px;width:calc(100vw - 32px);max-height:280px;overflow-y:auto;font-family:inherit;";
+        box.style.cssText = "position:fixed;z-index:9000;display:none;background:var(--bg-card);border:1px solid var(--purple);border-radius:12px;padding:10px;box-shadow:0 8px 32px rgba(0,0,0,0.4);max-width:320px;width:calc(100vw - 24px);max-height:360px;overflow-y:auto;font-family:inherit;";
         document.body.appendChild(box);
       }
-      // Build content: tag label + quick actions + input + apply
-      const tag = (tagName || "").toUpperCase();
-      const tagLabel = tag || "Element";
+      var tag = (tagName || "").toUpperCase();
+      var tagLabel = tag || "Element";
       var actions = getQuickActions(tag);
+      var selectorShort = (selector || "").replace(/^body > /,"").slice(0, 60);
+      // Get currently selected model name from the main dropdown
+      var mainSelect = document.getElementById("ai-model");
+      var currentModelId = mainSelect ? mainSelect.value : "gemini";
+      var currentModelName = "Gemini 2.5 Flash";
+      if (mainSelect) {
+        var opt = mainSelect.options[mainSelect.selectedIndex];
+        if (opt) currentModelName = opt.textContent;
+      }
+      // Determine tier badge
+      var tier = "FREE";
+      var tierColor = "#22c55e";
+      if (currentModelId.indexOf("ashna:") === 0 || currentModelId.indexOf("opencode:") === 0) { tier = "PRO"; tierColor = "#f59e0b"; }
+      else if (currentModelId.indexOf("openrouter:") === 0) { tier = "FREE"; tierColor = "#22c55e"; }
+      else if (currentModelId.indexOf("gemini-pro") === 0 || currentModelId.indexOf("claude") === 0 || currentModelId.indexOf("gpt") === 0) { tier = "BYOK"; tierColor = "#3b82f6"; }
+
       box.innerHTML =
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">' +
+        // Row 1: tag label + close button
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
           '<span style="font-size:11px;font-weight:600;color:var(--purple-text);background:rgba(167,139,250,0.12);padding:2px 8px;border-radius:6px;">' + escapeHtml(tagLabel) + '</span>' +
-          '<button onclick="hideFloatingEditBox()" style="border:none;background:none;color:var(--fg-muted);cursor:pointer;font-size:16px;padding:0 4px;">&times;</button>' +
+          '<button onclick="hideFloatingEditBox()" style="border:none;background:none;color:var(--fg-muted);cursor:pointer;font-size:16px;padding:0 4px;line-height:1;">&times;</button>' +
         '</div>' +
-        '<div id="floating-actions" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">' +
+        // Row 2: breadcrumb (DOM path)
+        '<div style="font-size:9px;color:var(--fg-muted);margin-bottom:6px;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(selectorShort) + '</div>' +
+        // Row 3: model selector (compact, expandable)
+        '<div id="floating-model-bar" onclick="toggleFloatingModelList()" style="display:flex;align-items:center;justify-content:space-between;padding:5px 8px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;cursor:pointer;background:var(--bg-elevated);">' +
+          '<span style="font-size:11px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">' + escapeHtml(currentModelName) + '</span>' +
+          '<span style="font-size:8px;font-weight:700;color:#000;background:' + tierColor + ';padding:1px 4px;border-radius:4px;margin-left:4px;flex-shrink:0;">' + tier + '</span>' +
+          '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-left:4px;flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>' +
+        '</div>' +
+        // Model list (hidden by default, shown when tapped)
+        '<div id="floating-model-list" style="display:none;margin-bottom:6px;border:1px solid var(--border);border-radius:6px;overflow:hidden;">' +
+          '<input type="text" id="floating-model-search" placeholder="Search models..." oninput="filterFloatingModels()" style="width:100%;font-size:11px;padding:5px 8px;border:none;border-bottom:1px solid var(--border);background:var(--bg);color:var(--fg);font-family:inherit;outline:none;" />' +
+          '<div id="floating-model-options" style="max-height:120px;overflow-y:auto;"></div>' +
+          '<div style="padding:4px 8px;border-top:1px solid var(--border);font-size:9px;color:var(--fg-muted);">' +
+            '<a href="#" onclick="event.preventDefault();toast(\'Free: Gemini/OpenRouter (10/day). PRO: AshnaAI/OpenCode (50/day). BYOK: paste your own key in Settings.\',\'info\')" style="color:var(--purple-text);text-decoration:underline;">Which model should I use?</a>' +
+          '</div>' +
+        '</div>' +
+        // Row 4: quick action buttons
+        '<div id="floating-actions" style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px;">' +
           actions.map(function(a) {
-            return '<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'floating-instruction\').value=\'' + a.replace(/'/g,"\\'") + '\';document.getElementById(\'floating-instruction\').focus()" style="font-size:10px;padding:3px 8px;">' + a + '</button>';
+            return '<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'floating-instruction\').value=\'' + a.replace(/'/g,"\\'") + '\';document.getElementById(\'floating-instruction\').focus()" style="font-size:9px;padding:2px 6px;">' + a + '</button>';
           }).join("") +
         '</div>' +
-        '<input type="text" id="floating-instruction" placeholder="Describe the change..." style="width:100%;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--fg);margin-bottom:8px;font-family:inherit;" />' +
-        '<div style="display:flex;gap:6px;">' +
-          '<button class="btn btn-purple btn-sm" onclick="applyFloatingEdit()" style="flex:1;">Apply</button>' +
-          '<button class="btn btn-ghost btn-sm" onclick="editEntirePage()" style="font-size:11px;">Entire page</button>' +
+        // Row 5: instruction input
+        '<input type="text" id="floating-instruction" placeholder="Describe the change..." style="width:100%;font-size:12px;padding:7px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--fg);margin-bottom:6px;font-family:inherit;" />' +
+        // Row 6: Cancel + Apply + Entire page
+        '<div style="display:flex;gap:4px;">' +
+          '<button class="btn btn-ghost btn-sm" onclick="hideFloatingEditBox()" style="font-size:11px;flex:0 0 auto;">Cancel</button>' +
+          '<button class="btn btn-purple btn-sm" onclick="applyFloatingEdit()" style="flex:1;font-size:11px;">Apply Changes</button>' +
+          '<button class="btn btn-ghost btn-sm" onclick="editEntirePage()" style="font-size:9px;flex:0 0 auto;">Entire page</button>' +
         '</div>';
-      // Position the box near the click location
+
+      // Populate model options from the main dropdown
+      populateFloatingModels();
       positionFloatingEditBox(clickX, clickY);
       box.style.display = "block";
-      // Focus the input after a short delay (lets the box render first)
       setTimeout(function() {
         var inst = document.getElementById("floating-instruction");
         if (inst) inst.focus({ preventScroll: false });
       }, 200);
     }
     window.showFloatingEditBox = showFloatingEditBox;
+
+    // Populate the floating model dropdown from the main <select id="ai-model">
+    function populateFloatingModels(query) {
+      var container = document.getElementById("floating-model-options");
+      if (!container) return;
+      var mainSelect = document.getElementById("ai-model");
+      if (!mainSelect) return;
+      var currentVal = mainSelect.value;
+      var html = "";
+      var q = (query || "").toLowerCase();
+      for (var i = 0; i < mainSelect.options.length; i++) {
+        var opt = mainSelect.options[i];
+        var text = opt.textContent || opt.value;
+        var val = opt.value;
+        // Skip optgroup labels
+        if (opt.parentNode && opt.parentNode.tagName === "OPTGROUP" && !val) continue;
+        // Filter by search query
+        if (q && text.toLowerCase().indexOf(q) < 0) continue;
+        // Determine tier
+        var t = "FREE", tc = "#22c55e";
+        if (val.indexOf("ashna:") === 0 || val.indexOf("opencode:") === 0) { t = "PRO"; tc = "#f59e0b"; }
+        else if (val.indexOf("openrouter:") === 0) { t = "FREE"; tc = "#22c55e"; }
+        else if (val.indexOf("gemini-pro") === 0 || val.indexOf("claude") === 0 || val.indexOf("gpt") === 0) { t = "BYOK"; tc = "#3b82f6"; }
+        var isSel = val === currentVal;
+        html += '<div onclick="selectFloatingModel(\'' + val.replace(/'/g,"\\'") + '\')" style="display:flex;align-items:center;gap:6px;padding:4px 8px;cursor:pointer;font-size:10px;' + (isSel ? 'background:rgba(167,139,250,0.12);' : '') + '" onmouseover="this.style.background=\'var(--bg-elevated)\'" onmouseout="this.style.background=\'' + (isSel ? 'rgba(167,139,250,0.12)' : 'transparent') + '\'">' +
+          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg);">' + escapeHtml(text) + '</span>' +
+          '<span style="font-size:7px;font-weight:700;color:#000;background:' + tc + ';padding:1px 3px;border-radius:3px;flex-shrink:0;">' + t + '</span>' +
+          (isSel ? '<span style="color:var(--purple-text);flex-shrink:0;">✓</span>' : '') +
+        '</div>';
+      }
+      container.innerHTML = html;
+    }
+
+    // Toggle the model list visibility
+    window.toggleFloatingModelList = function() {
+      var list = document.getElementById("floating-model-list");
+      if (!list) return;
+      if (list.style.display === "none") {
+        list.style.display = "block";
+        populateFloatingModels();
+        setTimeout(function() { var s = document.getElementById("floating-model-search"); if (s) s.focus(); }, 100);
+      } else {
+        list.style.display = "none";
+      }
+    };
+
+    // Filter models in the floating dropdown
+    window.filterFloatingModels = function() {
+      var input = document.getElementById("floating-model-search");
+      populateFloatingModels(input ? input.value : "");
+    };
+
+    // Select a model from the floating dropdown — syncs with the main <select>
+    window.selectFloatingModel = function(val) {
+      var mainSelect = document.getElementById("ai-model");
+      if (mainSelect) mainSelect.value = val;
+      // Trigger onAiModelChange to update BYOK rows etc.
+      if (typeof onAiModelChange === "function") onAiModelChange();
+      // Update the model bar label
+      var bar = document.getElementById("floating-model-bar");
+      if (bar && mainSelect) {
+        var opt = mainSelect.options[mainSelect.selectedIndex];
+        var name = opt ? opt.textContent : val;
+        var tier = "FREE", tc = "#22c55e";
+        if (val.indexOf("ashna:") === 0 || val.indexOf("opencode:") === 0) { tier = "PRO"; tc = "#f59e0b"; }
+        else if (val.indexOf("openrouter:") === 0) { tier = "FREE"; tc = "#22c55e"; }
+        else if (val.indexOf("gemini-pro") === 0 || val.indexOf("claude") === 0 || val.indexOf("gpt") === 0) { tier = "BYOK"; tc = "#3b82f6"; }
+        var span = bar.querySelector("span");
+        if (span) span.textContent = name;
+        var badge = bar.querySelector("span:nth-child(2)");
+        if (badge) { badge.textContent = tier; badge.style.background = tc; }
+      }
+      // Hide the model list
+      var list = document.getElementById("floating-model-list");
+      if (list) list.style.display = "none";
+      // Repopulate to show the checkmark
+      populateFloatingModels();
+      // Focus the instruction input
+      var inst = document.getElementById("floating-instruction");
+      if (inst) inst.focus();
+    };
 
     function hideFloatingEditBox() {
       var box = document.getElementById("floating-edit-box");
@@ -1929,15 +2047,23 @@
 
     function getQuickActions(tagName) {
       var tag = (tagName || "").toUpperCase();
-      if (["H1","H2","H3","H4","H5","H6","P","SPAN","A","LABEL"].includes(tag))
-        return ["Change font", "Add gradient text", "Add subtitle"];
+      if (["H1","H2","H3","H4","H5","H6"].includes(tag))
+        return ["Change font", "Add gradient text", "Add subtitle", "Improve readability"];
+      if (["P","SPAN","A","LABEL"].includes(tag))
+        return ["Change font", "Add gradient text", "Improve readability"];
       if (["IMG","PICTURE"].includes(tag))
-        return ["Resize image", "Add border radius", "Add shadow"];
+        return ["Resize image", "Add border radius", "Add shadow", "Make responsive"];
       if (["BUTTON","INPUT"].includes(tag))
-        return ["Change color", "Add animation", "Make rounded"];
-      if (["DIV","SECTION","HEADER","FOOTER","NAV"].includes(tag))
-        return ["Add gradient bg", "Make responsive", "Add shadow"];
-      return ["Make responsive", "Change colors", "Add animation"];
+        return ["Change color", "Add animation", "Make rounded", "Add hover effect"];
+      if (["DIV","SECTION","ARTICLE","MAIN","HEADER","FOOTER","NAV"].includes(tag))
+        return ["Make responsive grid", "Improve spacing", "Add gradient bg", "Add shadow"];
+      if (["UL","OL","LI"].includes(tag))
+        return ["Add icons", "Make horizontal", "Change spacing", "Add hover effect"];
+      if (["TABLE","THEAD","TBODY","TR","TD","TH"].includes(tag))
+        return ["Add zebra stripes", "Make responsive", "Add borders", "Improve spacing"];
+      if (["FORM","FIELDSET"].includes(tag))
+        return ["Improve spacing", "Add validation styles", "Make responsive"];
+      return ["Make responsive", "Change colors", "Add animation", "Improve readability"];
     }
 
     // Apply AI edit from the floating box (uses the same applyAiEdit flow)
