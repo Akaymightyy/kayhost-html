@@ -1,9 +1,11 @@
 // /api/ai-edit.js — receives { html, selector, instruction, browserId }, calls Gemini to rewrite HTML.
 // Uses the new @google/genai SDK (replaces old @google/generative-ai).
 // Accepts AQ.-format keys (new Google format) — no prefix validation.
-// Free-tier daily limit: 10 edits per browserId per UTC day, tracked in Firestore
-// (collection "aiUsage", doc id `${browserId}_${YYYY-MM-DD}`). BYOK edits (Claude/GPT,
-// and a user's own Gemini key) never touch this route, so they're never limited here.
+// Free-tier daily limit: 50 edits per browserId PER PROVIDER per UTC day.
+// Each provider (gemini, openrouter) has its own independent 50/day counter
+// so using one doesn't burn the other's quota. Tracked in Firestore
+// (collection "aiUsage", doc id `${browserId}_${provider}_${YYYY-MM-DD}`).
+// BYOK edits (Claude/GPT, and a user's own Gemini key) never touch this route.
 const { GoogleGenAI } = require("@google/genai");
 const { getDb } = require("../lib/firebase");
 const { doc, getDoc, setDoc } = require("firebase/firestore");
@@ -16,7 +18,7 @@ const aiProviders = require("../lib/ai-providers");
 // `wget --mirror` and the bundled function source leaked. Now there's NO
 // fallback — if the env var is missing, the function returns a clear error.
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
-const FREE_DAILY_LIMIT = 10;
+const FREE_DAILY_LIMIT = 50;  // per provider per browserId per UTC day
 
 // Block scraper/bot User-Agents at the function level.
 function isScraperUa(ua) {
@@ -65,12 +67,14 @@ module.exports = async (req, res) => {
 
     // --- Existing Gemini flow below (unchanged) ---
 
-    // --- Daily free-tier limit (per browserId, resets at UTC midnight) ---
-    // Only CHECK here — we only count it against the quota once Gemini actually
-    // succeeds (see the setDoc call further down), so a failed/unavailable-model
-    // attempt doesn't burn one of the person's 10 free edits for nothing.
+    // --- Daily free-tier limit (per browserId PER PROVIDER, resets at UTC midnight) ---
+    // Each provider (gemini, openrouter) gets its own 50/day counter so using
+    // one doesn't burn the other's quota. Only CHECK here — we only count it
+    // against the quota once Gemini actually succeeds (see the setDoc call further
+    // down), so a failed/unavailable-model attempt doesn't burn one of the
+    // person's free edits for nothing.
     const today = new Date().toISOString().slice(0, 10);
-    const usageId = (browserId || "anonymous") + "_" + today;
+    const usageId = (browserId || "anonymous") + "_gemini_" + today;
     let usageCount = 0;
     let usageDb = null;
     try {
@@ -80,8 +84,9 @@ module.exports = async (req, res) => {
       usageCount = usageSnap.exists() ? (usageSnap.data().count || 0) : 0;
       if (usageCount >= FREE_DAILY_LIMIT) {
         return res.status(429).json({
-          error: `You've used all ${FREE_DAILY_LIMIT} free AI edits for today. Add your own Gemini, Claude, or GPT key in Settings for unlimited edits, or try again tomorrow.`,
+          error: `You've used all ${FREE_DAILY_LIMIT} free Gemini edits for today. Try the OpenRouter model from the dropdown (also free), add your own key in Settings, or try again tomorrow.`,
           limitReached: true,
+          provider: "gemini",
         });
       }
     } catch (usageErr) {
@@ -526,9 +531,10 @@ async function handleOpenRouterEdit(req, res, body) {
     return res.status(400).json({ error: "model ID is required" });
   }
 
-  // --- Daily free-tier limit (same as Gemini — browserId, 10/day) ---
+  // --- Daily free-tier limit (per browserId PER PROVIDER — 50/day each) ---
+  // OpenRouter gets its own 50/day counter, separate from Gemini's.
   const today = new Date().toISOString().slice(0, 10);
-  const usageId = (body.browserId || "anonymous") + "_" + today;
+  const usageId = (body.browserId || "anonymous") + "_openrouter_" + today;
   let usageCount = 0;
   let usageDb = null;
   try {
@@ -538,8 +544,9 @@ async function handleOpenRouterEdit(req, res, body) {
     usageCount = usageSnap.exists() ? (usageSnap.data().count || 0) : 0;
     if (usageCount >= FREE_DAILY_LIMIT) {
       return res.status(429).json({
-        error: `You've used all ${FREE_DAILY_LIMIT} free AI edits for today. Try again tomorrow.`,
+        error: `You've used all ${FREE_DAILY_LIMIT} free OpenRouter edits for today. Try the Gemini model from the dropdown (also free), add your own key in Settings, or try again tomorrow.`,
         limitReached: true,
+        provider: "openrouter",
       });
     }
   } catch (e) {
