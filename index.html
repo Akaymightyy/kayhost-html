@@ -1671,19 +1671,49 @@
 
     // --- Deploy ---
     document.getElementById("deploy-btn").addEventListener("click", async () => {
-      // In multi-file mode, merge all files (CSS inlined as <style>, JS as <script>)
-      // before sending to /api/deploy. The deploy endpoint takes a single HTML blob.
-      const html = (typeof _files !== "undefined" && _files.length > 1)
-        ? mergeFilesToHtml().trim()
-        : document.getElementById("html-input").value.trim();
+      // --- Phase 1: Multi-page detection ---
+      // If the editor has 2+ HTML files in _files, deploy as a multi-page project
+      // (each HTML file gets its own clean URL: about.html -> /about, etc.).
+      // Otherwise, fall through to the existing single-file deploy (unchanged).
+      const hasMultipleHtml = (typeof _files !== "undefined" && _files.length > 1 &&
+        _files.filter(f => f.name.endsWith(".html") || f.name.endsWith(".htm")).length >= 2);
+
       const title = document.getElementById("title-input").value || "Untitled";
-      if (!html) { toast("Paste some HTML first", "error"); return; }
       const btn = document.getElementById("deploy-btn");
       btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Deploying...';
+
       try {
-        const res = await fetch("/api/deploy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ html, title, ttl: currentTtl, browserId: getBrowserId() }) });
-        if (!res.ok) throw new Error((await res.json()).error || "Deploy failed");
-        const { url } = await res.json();
+        let url;
+        if (hasMultipleHtml) {
+          // --- Multi-page deploy (Phase 1) ---
+          // Sync the active file's content into _files before sending
+          if (_activeFileIndex >= 0) {
+            _files[_activeFileIndex].content = document.getElementById("html-input").value;
+          }
+          // Build the files object: { "index.html": "...", "about.html": "...", "css/style.css": "..." }
+          const filesObj = {};
+          for (const f of _files) {
+            filesObj[f.name] = f.content || "";
+          }
+          const res = await fetch("/api/multi-deploy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ files: filesObj, title, ttl: currentTtl, browserId: getBrowserId() }),
+          });
+          if (!res.ok) throw new Error((await res.json()).error || "Multi-page deploy failed");
+          const data = await res.json();
+          url = data.url;
+        } else {
+          // --- Single-file deploy (unchanged from before) ---
+          const html = (typeof _files !== "undefined" && _files.length > 1)
+            ? mergeFilesToHtml().trim()
+            : document.getElementById("html-input").value.trim();
+          if (!html) { toast("Paste some HTML first", "error"); return; }
+          const res = await fetch("/api/deploy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ html, title, ttl: currentTtl, browserId: getBrowserId() }) });
+          if (!res.ok) throw new Error((await res.json()).error || "Deploy failed");
+          ({ url } = await res.json());
+        }
+
         const result = document.getElementById("deploy-result");
         result.classList.remove("empty");
         result.innerHTML = '<div class="link-box"><span>' + escapeHtml(url) + '</span><button class="copy-btn" onclick="navigator.clipboard.writeText(\'' + escapeHtml(url) + '\').then(() => toast(\'Copied\', \'success\'))">Copy</button></div><a class="btn btn-purple btn-block" href="' + escapeHtml(url) + '" target="_blank" rel="noopener" style="margin-top: 8px;">Open live page</a>';
@@ -1691,7 +1721,7 @@
         result.classList.remove("revealed");
         void result.offsetWidth; // force reflow
         result.classList.add("revealed");
-        toast("Deployed. Your link is live.", "success");
+        toast(hasMultipleHtml ? "Multi-page site deployed. Your link is live." : "Deployed. Your link is live.", "success");
       } catch (err) { toast(err.message, "error"); }
       finally { btn.disabled = false; btn.textContent = "Deploy"; }
     });
@@ -2816,7 +2846,11 @@ Return ONLY the raw HTML:`;
         // of inlining — so the user can edit them separately.)
         const cssFilesAll = files.filter(f => f.name.endsWith(".css"));
         const jsFilesAll = files.filter(f => f.name.endsWith(".js"));
-        const useMultiFileMode = (cssFilesAll.length + jsFilesAll.length) > 0;
+        // Phase 1: also collect ALL HTML files (not just the first one) so multi-page
+        // deploy can kick in. Each HTML file becomes its own tab + its own URL.
+        const allHtmlFiles = files.filter(f => f.name.endsWith(".html") || f.name.endsWith(".htm"));
+        // Multi-file mode now triggers if there are CSS/JS files OR 2+ HTML files
+        const useMultiFileMode = (cssFilesAll.length + jsFilesAll.length) > 0 || allHtmlFiles.length >= 2;
 
         if (!useMultiFileMode) {
           // Single-file mode: inline everything into one HTML blob (original behavior)
@@ -2837,20 +2871,60 @@ Return ONLY the raw HTML:`;
           toast("Folder loaded (" + files.length + " files merged)", "success");
         } else {
           // Multi-file mode: each file becomes its own tab (htmlhost.co style)
-          _files = [{ name: htmlFile.name, content: html }];
+          // Phase 1: include ALL HTML files (preserving folder structure via webkitRelativePath)
+          // so multi-page deploy can map each one to a clean URL.
+          _files = [];
+          for (const hf of allHtmlFiles) {
+            // Use webkitRelativePath if available (preserves "blog/post-1.html"),
+            // otherwise fall back to just the filename.
+            const path = hf.webkitRelativePath || hf.name;
+            // Strip any leading folder name from webkitRelativePath if it's just the
+            // folder name itself (e.g. "my-site/index.html" -> "index.html").
+            // We want to preserve subfolder structure (e.g. "blog/post.html") but
+            // drop the top-level uploaded-folder name.
+            let cleanPath = path;
+            const slashIdx = path.indexOf("/");
+            if (slashIdx > 0 && !path.startsWith("/")) {
+              // Check if the first segment is the uploaded folder name (heuristic:
+              // if there's only one slash, drop the first segment; if multiple, keep them)
+              const segments = path.split("/");
+              if (segments.length === 2) {
+                // "my-site/index.html" -> "index.html"
+                cleanPath = segments[1];
+              } else if (segments.length > 2) {
+                // "my-site/blog/post.html" -> "blog/post.html"
+                cleanPath = segments.slice(1).join("/");
+              }
+            }
+            _files.push({ name: cleanPath, content: await hf.text() });
+          }
           for (const css of cssFilesAll) {
-            _files.push({ name: css.name, content: await css.text() });
+            const path = css.webkitRelativePath || css.name;
+            let cleanPath = path;
+            const segments = path.split("/");
+            if (segments.length >= 2) cleanPath = segments.slice(1).join("/");
+            _files.push({ name: cleanPath, content: await css.text() });
           }
           for (const js of jsFilesAll) {
-            _files.push({ name: js.name, content: await js.text() });
+            const path = js.webkitRelativePath || js.name;
+            let cleanPath = path;
+            const segments = path.split("/");
+            if (segments.length >= 2) cleanPath = segments.slice(1).join("/");
+            _files.push({ name: cleanPath, content: await js.text() });
+          }
+          // Make sure the primary HTML file (index.html if present, else first) is first in the list
+          const idxIdx = _files.findIndex(f => f.name === "index.html" || f.name.endsWith("/index.html"));
+          if (idxIdx > 0) {
+            const [idxFile] = _files.splice(idxIdx, 1);
+            _files.unshift(idxFile);
           }
           _activeFileIndex = 0;
-          document.getElementById("html-input").value = html;
-          currentHtml = html;
+          document.getElementById("html-input").value = _files[0].content || "";
+          currentHtml = _files[0].content || "";
           renderFileTabs();
           showEditor();
           saveDraft(currentHtml);
-          toast("Folder loaded — " + _files.length + " files in tabs", "success");
+          toast("Folder loaded — " + _files.length + " files in tabs (multi-page ready)", "success");
         }
       } catch (err) { toast(err.message, "error"); }
     });

@@ -40,12 +40,16 @@
     { "source": "/api/ai-providers", "destination": "/api/ai-providers.js" },
     { "source": "/api/serve", "destination": "/api/serve.js" },
     { "source": "/site/:id", "destination": "/api/main?route=site&id=:id" },
+    { "source": "/api/multi-deploy", "destination": "/api/main?route=multi-deploy" },
+    { "source": "/p/:id", "destination": "/api/main?route=multi-serve" },
+    { "source": "/p/:id/", "destination": "/api/main?route=multi-serve" },
+    { "source": "/p/:id/:path*", "destination": "/api/main?route=multi-serve" },
     { "source": "/api/signin", "destination": "/api/auth?route=signin" },
     { "source": "/api/signup", "destination": "/api/auth?route=signup" },
     { "source": "/api/admin", "destination": "/api/admin.js" },
     { "source": "/api/ai-edit", "destination": "/api/ai-edit.js" },
     { "source": "/__/auth/:catch*", "destination": "/index.html" },
     { "source": "/admin", "destination": "/index.html" },
-    { "source": "/((?!api|site|_next|sw.js|manifest.json|icon|favicon|apple|robots|svarna-template|__).*)", "destination": "/index.html" }
+    { "source": "/((?!api|site|p|_next|sw.js|manifest.json|icon|favicon|apple|robots|svarna-template|__).*)", "destination": "/index.html" }
   ]
 }
