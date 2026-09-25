@@ -38,6 +38,7 @@
     { "source": "/api/paystack/verify", "destination": "/api/main?route=paystack-verify" },
     { "source": "/api/ashna-models", "destination": "/api/ashna-models.js" },
     { "source": "/api/ai-providers", "destination": "/api/ai-providers.js" },
+    { "source": "/api/serve", "destination": "/api/serve.js" },
     { "source": "/site/:id", "destination": "/api/main?route=site&id=:id" },
     { "source": "/api/signin", "destination": "/api/auth?route=signin" },
     { "source": "/api/signup", "destination": "/api/auth?route=signup" },
