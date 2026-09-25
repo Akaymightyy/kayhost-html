@@ -26,6 +26,9 @@ const {
   deleteDoc, updateDoc,
 } = require("firebase/firestore");
 
+// ===== Phase 1: Multi-page site support (additive, no impact on existing flows) =====
+const multipage = require("../lib/multipage");
+
 // ===== Shared scraper-blocker (since we can't use Edge Middleware without Next.js) =====
 function isScraperUa(ua) {
   if (!ua || ua.length < 20) return true;
@@ -459,6 +462,126 @@ async function handleSite(req, res) {
   }
 }
 
+// ===== Phase 1: Multi-page deploy (additive — only used when frontend sends `files`) =====
+// POST /api/multi-deploy
+//   body: { files: { "index.html": "...", "about.html": "...", "css/style.css": "..." },
+//           title, ttl, browserId }
+//   returns: { id, url: "https://host/p/<id>", expiresAt }
+//
+// Stores in Firestore collection `projects` — completely separate from `sites`.
+// The existing single-file /api/deploy route is untouched.
+async function handleMultiDeploy(req, res) {
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  try {
+    const { files, title, ttl, browserId } = req.body || {};
+
+    // Validate the files object
+    const validation = multipage.validateFiles(files);
+    if (!validation.ok) {
+      return res.status(400).json({ error: validation.error });
+    }
+
+    // Only treat as multi-page if there are 2+ HTML files. If only 1 HTML file
+    // + CSS/JS, the frontend should use the existing single-file deploy instead.
+    // (We still accept it here as a fallback, but warn.)
+    if (!multipage.isMultiPageProject(files)) {
+      // Not strictly an error — but flag it so the frontend knows to use single-file deploy
+      console.warn("[multi-deploy] Project has only 1 HTML file — should use /api/deploy instead");
+    }
+
+    // Build the path map
+    const pathMap = multipage.buildPathMap(files);
+
+    // Generate ID and compute expiry
+    const id = Math.random().toString(36).slice(2, 8);
+    const now = Date.now();
+    let expiresAt = null;
+    if (ttl === "1d") expiresAt = now + 86400000;
+    else if (ttl === "7d") expiresAt = now + 604800000;
+    else if (ttl === "30d") expiresAt = now + 2592000000;
+
+    const db = getDb();
+    await setDoc(doc(db, "projects", id), {
+      id,
+      title: title || "Untitled",
+      browserId: browserId || "anonymous",
+      createdAt: now,
+      expiresAt,
+      files,        // { "index.html": "...", "about.html": "...", ... }
+      pathMap,      // { "/": "index.html", "/about": "about.html", ... }
+    });
+
+    const baseUrl = `https://${req.headers.host}`;
+    return res.status(200).json({
+      id,
+      url: `${baseUrl}/p/${id}`,
+      expiresAt,
+      multiPage: true,
+    });
+  } catch (err) {
+    console.error("[multi-deploy] Error:", err);
+    return res.status(500).json({ error: err.message || "Failed to deploy multi-page project" });
+  }
+}
+
+// ===== Phase 1: Multi-page serve (additive — only handles /p/:id/* routes) =====
+// GET /p/:id           -> serves the project's index.html
+// GET /p/:id/about     -> serves about.html (via pathMap)
+// GET /p/:id/css/x.css -> serves css/x.css
+//
+// The route is registered in vercel.json as a rewrite to /api/main?route=multi-serve&id=...&path=...
+async function handleMultiServe(req, res) {
+  // NO scraper-blocker on this route — same as route=site, we want social
+  // media crawlers to be able to fetch the HTML for link previews.
+  try {
+    // Extract project ID and path from the URL.
+    // /p/abc123/about  ->  id=abc123, path=/about
+    // /p/abc123/        ->  id=abc123, path=/
+    // /p/abc123         ->  id=abc123, path=/
+    const url = req.url || "";
+    const afterP = url.split("/p/")[1] || "";
+    const parts = afterP.split("?")[0].split("/");
+    const id = parts[0] || req.query.id || "";
+    let path = "/" + parts.slice(1).join("/");
+    if (path === "/") path = "/";
+    // Re-normalize empty path to "/"
+    if (!path || path === "") path = "/";
+
+    if (!id) {
+      return res.status(404).send(renderSiteError("No project ID", "This link is missing a project ID."));
+    }
+
+    const db = getDb();
+    const snap = await getDoc(doc(db, "projects", id));
+    if (!snap.exists()) {
+      return res.status(404).send(renderSiteError("Not found", "This project doesn't exist or has been deleted."));
+    }
+    const data = snap.data();
+    if (data.expiresAt && Date.now() > data.expiresAt) {
+      return res.status(410).send(renderSiteExpired(data.title || "Untitled"));
+    }
+
+    const pathMap = data.pathMap || {};
+    const files = data.files || {};
+    const filePath = multipage.resolvePath(path, pathMap);
+    if (!filePath) {
+      return res.status(404).send(renderSiteError("Not found", "The page '" + path + "' doesn't exist in this project."));
+    }
+    const content = files[filePath];
+    if (content === undefined) {
+      return res.status(404).send(renderSiteError("Not found", "File '" + filePath + "' is missing from this project."));
+    }
+
+    res.setHeader("Content-Type", multipage.getMimeType(filePath));
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "public, max-age=60");
+    return res.status(200).send(content);
+  } catch (err) {
+    console.error("[multi-serve] Error:", err);
+    return res.status(500).send(renderSiteError("Server error", err.message));
+  }
+}
+
 // ===== Dispatcher =====
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -466,10 +589,11 @@ module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.status(204).end();
 
-  // Block scrapers on every route EXCEPT route=site (which serves user-generated pages,
-  // and needs to be fetchable by WhatsApp/Facebook/etc. for link previews)
+  // Block scrapers on every route EXCEPT route=site AND route=multi-serve
+  // (both serve user-generated pages and need to be fetchable by
+  // WhatsApp/Facebook/etc. for link previews)
   const route = req.query.route || "";
-  if (route !== "site" && isScraperUa(req.headers["user-agent"] || "")) {
+  if (route !== "site" && route !== "multi-serve" && isScraperUa(req.headers["user-agent"] || "")) {
     return res.status(403).json({ error: "Automated access forbidden. Use a real browser." });
   }
 
@@ -483,6 +607,8 @@ module.exports = async (req, res) => {
     case "user-profile":    return handleUserProfile(req, res);
     case "paystack-verify": return handlePaystackVerify(req, res);
     case "site":            return handleSite(req, res);
+    case "multi-deploy":    return handleMultiDeploy(req, res);
+    case "multi-serve":     return handleMultiServe(req, res);
     default:
       return res.status(404).json({ error: "Unknown route: " + (route || "(missing)") });
   }
