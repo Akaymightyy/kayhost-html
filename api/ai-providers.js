@@ -1,10 +1,5 @@
-// /api/ai-providers.js — PUBLIC endpoint that returns which free-tier AI providers
-// are currently enabled (OpenCode Zen, AgentRouter). The frontend uses this to
-// build the model dropdown dynamically — only showing providers whose API keys
-// are set as env vars.
-//
-// Returns: { providers: [{ id, label, models: [{ id, displayName, ... }] }] }
-// Never includes API keys.
+// /api/ai-providers.js — PUBLIC endpoint returning which AI providers are enabled.
+// OpenRouter model list is fetched dynamically from OpenRouter's live /models endpoint.
 
 const { getEnabledProviders } = require("../lib/ai-providers");
 
@@ -30,7 +25,7 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const providers = getEnabledProviders();
+    const providers = await getEnabledProviders();
     console.log("[ai-providers] Enabled:", providers.map(p => p.id + " (" + p.models.length + " models)").join(", ") || "(none)");
     return res.status(200).json({ providers });
   } catch (err) {
