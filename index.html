@@ -1141,8 +1141,8 @@
         <optgroup label="AshnaAI — Pro" id="ashna-optgroup" style="display:none;"></optgroup>
         <!-- OpenCode Zen group, populated dynamically by loadAiProviders() -->
         <optgroup label="OpenCode Zen — Pro" id="opencode-optgroup" style="display:none;"></optgroup>
-        <!-- OpenRouter group, populated dynamically by loadAiProviders() -->
-        <optgroup label="OpenRouter — Pro" id="openrouter-optgroup" style="display:none;"></optgroup>
+        <!-- OpenRouter group — FREE tier (not Pro), populated dynamically by loadAiProviders() -->
+        <optgroup label="OpenRouter (Free)" id="openrouter-optgroup" style="display:none;"></optgroup>
       </select>
     </div>
 
@@ -2000,53 +2000,42 @@
         // here without a registry lookup. The actual model ID is the part after
         // the colon. The request includes provider:"ashna" + the Firebase ID
         // token in the Authorization header (server verifies Pro status).
-        // --- OpenCode Zen + OpenRouter branch (Pro-only, server-side key + Firebase token) ---
-        // Same flow as Ashna: get Firebase ID token → send to /api/ai-edit with
-        // provider + model + Authorization: Bearer header. Server verifies Pro + 50/day cap.
-        if (modelChoice && (modelChoice.indexOf("opencode:") === 0 || modelChoice.indexOf("openrouter:") === 0)) {
-          const providerId = modelChoice.indexOf("opencode:") === 0 ? "opencode" : "openrouter";
-          const providerModelId = modelChoice.slice((providerId + ":").length);
+        // --- OpenCode Zen branch (Pro-only, server-side key + Firebase token) ---
+        if (modelChoice && modelChoice.indexOf("opencode:") === 0) {
+          const providerId = "opencode";
+          const providerModelId = modelChoice.slice("opencode:".length);
           let idToken = null;
-          try {
-            idToken = await getIdTokenForAdmin();
-          } catch (e) {
-            console.warn("[" + providerId + "] getIdTokenForAdmin threw:", e.message);
-          }
-          if (!idToken) {
-            toast("Session expired — sign out and back in", "error");
-            throw new Error("Session expired — sign out and back in to use this AI provider");
-          }
+          try { idToken = await getIdTokenForAdmin(); } catch (e) { console.warn("[" + providerId + "] getIdTokenForAdmin threw:", e.message); }
+          if (!idToken) { toast("Session expired — sign out and back in", "error"); throw new Error("Session expired"); }
           const res = await fetch("/api/ai-edit", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": "Bearer " + idToken,
-            },
-            body: JSON.stringify({
-              provider: providerId,
-              model: providerModelId,
-              html: (typeof _files !== "undefined" && _files.length > 1) ? mergeFilesToHtml() : currentHtml,
-              selector: selectedSelector,
-              instruction: inst,
-              browserId: getBrowserId(),
-            }),
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
+            body: JSON.stringify({ provider: providerId, model: providerModelId, html: (typeof _files !== "undefined" && _files.length > 1) ? mergeFilesToHtml() : currentHtml, selector: selectedSelector, instruction: inst, browserId: getBrowserId() }),
             signal: controller.signal,
           });
           if (!res.ok) {
             const errData = await res.json().catch(() => ({}));
-            if (res.status === 401) {
-              toast("Session expired — sign out and back in", "error");
-              throw new Error("Session expired — sign out and back in.");
-            }
-            if (res.status === 403 && errData.proRequired) {
-              if (typeof showProUpgrade === "function") {
-                showProUpgrade(providerId === "opencode" ? "OpenCode Zen" : "OpenRouter", errData.error || "Pro required");
-              }
-              throw new Error(errData.error || "Pro required");
-            }
+            if (res.status === 401) { toast("Session expired — sign out and back in", "error"); throw new Error("Session expired"); }
+            if (res.status === 403 && errData.proRequired) { if (typeof showProUpgrade === "function") { showProUpgrade("OpenCode Zen", errData.error || "Pro required"); } throw new Error(errData.error || "Pro required"); }
             throw new Error(errData.error || "AI edit failed");
           }
           html = (await res.json()).html;
+        }
+        // --- OpenRouter branch (FREE tier — not Pro-gated, same as Gemini) ---
+        else if (modelChoice && modelChoice.indexOf("openrouter:") === 0) {
+          const providerModelId = modelChoice.slice("openrouter:".length);
+          const res = await fetch("/api/ai-edit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ provider: "openrouter", model: providerModelId, html: (typeof _files !== "undefined" && _files.length > 1) ? mergeFilesToHtml() : currentHtml, selector: selectedSelector, instruction: inst, browserId: getBrowserId() }),
+            signal: controller.signal,
+          });
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || "AI edit failed");
+          }
+          html = (await res.json()).html;
+          bumpLocalUsageDisplay();
         }
         // --- Ashna branch (Pro-only, server-side key + Firebase token) ---
         else if (modelChoice && modelChoice.indexOf("ashna:") === 0) {
@@ -2274,8 +2263,8 @@ Return ONLY the raw HTML:`;
       const el = document.getElementById("ai-usage-badge");
       if (!el) return;
       const modelChoice = document.getElementById("ai-model").value;
-      // Server-side-key models (Ashna, OpenCode, OpenRouter) — hide the free-usage badge.
-      if (modelChoice && (modelChoice.indexOf("ashna:") === 0 || modelChoice.indexOf("opencode:") === 0 || modelChoice.indexOf("openrouter:") === 0)) {
+      // Pro-only server-side models (Ashna, OpenCode) — hide the free-usage badge.
+      if (modelChoice && (modelChoice.indexOf("ashna:") === 0 || modelChoice.indexOf("opencode:") === 0)) {
         el.style.display = "none";
         return;
       }
@@ -2295,7 +2284,7 @@ Return ONLY the raw HTML:`;
     function saveByokKey() {
       const modelChoice = document.getElementById("ai-model").value;
       // Server-side-key models (Ashna, OpenCode, OpenRouter) don't use BYOK — no-op
-      if (modelChoice && (modelChoice.indexOf("ashna:") === 0 || modelChoice.indexOf("opencode:") === 0 || modelChoice.indexOf("openrouter:") === 0)) return;
+      if (modelChoice && (modelChoice.indexOf("ashna:") === 0 || modelChoice.indexOf("opencode:") === 0)) return;
       const provider = AI_PROVIDERS[modelChoice];
       if (!provider) return;
       const val = document.getElementById("ai-byok-key").value.trim();
@@ -2308,7 +2297,7 @@ Return ONLY the raw HTML:`;
     function clearByokKey() {
       const modelChoice = document.getElementById("ai-model").value;
       // Server-side-key models (Ashna, OpenCode, OpenRouter) don't use BYOK — no-op
-      if (modelChoice && (modelChoice.indexOf("ashna:") === 0 || modelChoice.indexOf("opencode:") === 0 || modelChoice.indexOf("openrouter:") === 0)) return;
+      if (modelChoice && (modelChoice.indexOf("ashna:") === 0 || modelChoice.indexOf("opencode:") === 0)) return;
       const provider = AI_PROVIDERS[modelChoice];
       if (!provider) return;
       removeByokKey(provider.byokProvider);
@@ -2318,16 +2307,13 @@ Return ONLY the raw HTML:`;
       const modelChoice = document.getElementById("ai-model").value;
       const row = document.getElementById("ai-byok-row");
       const saved = document.getElementById("ai-byok-saved");
-      // Server-side-key models (Ashna, OpenCode, OpenRouter) — all Pro-only — no BYOK row
-      if (modelChoice && (modelChoice.indexOf("ashna:") === 0 || modelChoice.indexOf("opencode:") === 0 || modelChoice.indexOf("openrouter:") === 0)) {
+      // Pro-only server-side models (Ashna, OpenCode) — no BYOK, show upgrade if not Pro
+      if (modelChoice && (modelChoice.indexOf("ashna:") === 0 || modelChoice.indexOf("opencode:") === 0)) {
         row.style.display = "none";
         saved.style.display = "none";
-        // All three are Pro-only — show upgrade modal if non-Pro user picks any of them
         const isPro = (window.kayhostUserPro === true) || (window.currentUser && window.currentUser.pro === true);
         if (!isPro) {
-          const providerName = modelChoice.indexOf("ashna:") === 0 ? "AshnaAI"
-                            : modelChoice.indexOf("opencode:") === 0 ? "OpenCode Zen"
-                            : "OpenRouter";
+          const providerName = modelChoice.indexOf("ashna:") === 0 ? "AshnaAI" : "OpenCode Zen";
           document.getElementById("ai-model").value = "gemini";
           if (typeof showProUpgrade === "function") {
             showProUpgrade(providerName, providerName + " is a Pro-only AI provider. Upgrade to Pro to use it.");
@@ -2335,6 +2321,13 @@ Return ONLY the raw HTML:`;
             toast(providerName + " is a Pro feature", "info");
           }
         }
+        renderUsageBadge();
+        return;
+      }
+      // OpenRouter is FREE — no BYOK row, no Pro check, shows usage badge like Gemini
+      if (modelChoice && modelChoice.indexOf("openrouter:") === 0) {
+        row.style.display = "none";
+        saved.style.display = "none";
         renderUsageBadge();
         return;
       }
