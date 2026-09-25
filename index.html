@@ -1163,6 +1163,9 @@
     </div>
     <div id="ai-usage-badge" style="display:none;font-size:11px;margin-bottom:6px;"></div>
 
+    <!-- Visible status banner — shows during / after AI generation -->
+    <div id="ai-status-banner" style="display:none;padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:8px;align-items:center;gap:8px;"></div>
+
     <div class="row">
       <input type="text" id="ai-instruction" placeholder="Describe the change you want..." />
       <button class="btn btn-purple" id="ai-apply" onclick="applyAiEdit()">Apply</button>
@@ -1758,7 +1761,10 @@
         closeAiPanel();
       }
     }
+    // Loading state flag — prevents the AI panel from closing mid-request.
+    var _aiLoading = false;
     function closeAiPanel() {
+      if (_aiLoading) return;  // don't close while AI is generating
       document.getElementById("ai-panel")?.classList.remove("open");
       document.getElementById("ai-overlay")?.classList.remove("visible");
       try { window.Tawk_API && window.Tawk_API.showWidget && window.Tawk_API.showWidget(); } catch (e) {}
@@ -2173,11 +2179,59 @@
         }
       });
     });
+    // ===== AI status banner helpers =====
+    // Shows a visible banner inside the AI panel so the user ALWAYS knows
+    // whether generation is in progress, succeeded, or failed — even if
+    // they can't see the tiny spinner on the Apply button.
+    function showAiStatus(state, message) {
+      const banner = document.getElementById("ai-status-banner");
+      if (!banner) return;
+      banner.style.display = "flex";
+      banner.innerHTML = "";
+      const icon = document.createElement("span");
+      const text = document.createElement("span");
+      text.style.flex = "1";
+      if (state === "loading") {
+        banner.style.background = "rgba(124,58,237,0.15)";
+        banner.style.color = "var(--purple-text, #c4b5fd)";
+        banner.style.border = "1px solid rgba(124,58,237,0.4)";
+        icon.innerHTML = '<span class="spinner" style="display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></span>';
+        text.textContent = message || "Generating… the AI is rewriting your HTML. This usually takes 5-15 seconds.";
+      } else if (state === "success") {
+        banner.style.background = "rgba(16,185,129,0.15)";
+        banner.style.color = "#10b981";
+        banner.style.border = "1px solid rgba(16,185,129,0.4)";
+        icon.textContent = "OK";
+        text.textContent = message || "Change applied successfully.";
+      } else if (state === "error") {
+        banner.style.background = "rgba(239,68,68,0.15)";
+        banner.style.color = "#ef4444";
+        banner.style.border = "1px solid rgba(239,68,68,0.4)";
+        icon.textContent = "!";
+        text.textContent = message || "Something went wrong. Try again or pick another model.";
+      }
+      banner.appendChild(icon);
+      banner.appendChild(text);
+    }
+    function hideAiStatus() {
+      const banner = document.getElementById("ai-status-banner");
+      if (banner) banner.style.display = "none";
+    }
+    // Add the keyframe for the inline spinner if it's not already defined
+    if (!document.getElementById("ai-status-spin-keyframe")) {
+      const style = document.createElement("style");
+      style.id = "ai-status-spin-keyframe";
+      style.textContent = "@keyframes spin { to { transform: rotate(360deg); } }";
+      document.head.appendChild(style);
+    }
+
     async function applyAiEdit() {
       const inst = document.getElementById("ai-instruction").value.trim();
       if (!inst) { toast("Describe what you want to change", "error"); return; }
       const btn = document.getElementById("ai-apply");
+      _aiLoading = true;  // lock the panel so it can't close mid-request
       btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+      showAiStatus("loading");
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 45000);
       try {
@@ -2324,16 +2378,22 @@
         document.getElementById("html-input").value = html;
         updatePreview();
         toast("AI applied the change", "success");
+        showAiStatus("success", "Change applied. The preview has been updated.");
         document.getElementById("ai-instruction").value = "";
       } catch (err) {
         clearTimeout(timeout);
         if (err.name === "AbortError") {
           toast("Connection error. Try again.", "error");
+          showAiStatus("error", "Connection timed out. Try again or pick another model.");
         } else {
           toast(err.message || "Connection error. Try again.", "error");
+          showAiStatus("error", err.message || "Something went wrong. Try again or pick another model.");
         }
       }
-      finally { btn.disabled = false; btn.textContent = "Apply"; }
+      finally {
+        _aiLoading = false;  // unlock the panel
+        btn.disabled = false; btn.textContent = "Apply";
+      }
     }
     document.getElementById("ai-instruction").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); applyAiEdit(); } });
 
