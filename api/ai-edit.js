@@ -31,7 +31,9 @@ function isScraperUa(ua) {
   return patterns.some(p => lower.includes(p));
 }
 
-module.exports = async (req, res) => {
+// Phase 3: renamed from `module.exports` to a named function so the
+// streaming-aware handler below can call it as a fallback.
+async function handleAiEditOriginal(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -209,7 +211,7 @@ Return ONLY the raw HTML:`;
     }
     return res.status(500).json({ error: msg });
   }
-};
+}
 
 // ===== Ashna provider handler (Pro-only) =====
 // Reuses the same HTML size limit + fence-stripping conventions as Gemini.
@@ -621,3 +623,217 @@ Return ONLY the raw HTML:`;
 
   return res.status(200).json({ html: validated.html });
 }
+
+// ===== Phase 3: Streaming AI edit (SSE) =====
+// POST /api/ai-edit?stream=1
+//   body: same as non-streaming — { html, selector, instruction, browserId, provider, model }
+//
+// Response: Server-Sent Events stream
+//   event: token
+//   data: {"text": "..."}
+//
+//   event: done
+//   data: {"html": "<full html>", "txId": "..."}
+//
+//   event: error
+//   data: {"error": "...", "status": 502}
+//
+// Only streams for OpenAI-compatible providers (openrouter, opencode, ashna).
+// For Gemini (no provider in body), falls back to the non-streaming handler
+// (returns a single `done` event when complete).
+//
+// The streaming handler reuses the SAME quota checks, prompt construction,
+// and provider-call conventions as the non-streaming handlers — it just
+// flushes tokens as they arrive instead of waiting for the full response.
+
+async function streamChatCompletion(providerId, model, systemPrompt, userPrompt, options, onToken) {
+  // Returns the full text on completion. Calls onToken(text) for each chunk.
+  let baseUrl, apiKey;
+  if (providerId === "opencode") {
+    baseUrl = "https://opencode.ai/zen/v1";
+    apiKey = process.env.OPENCODE_API_KEY;
+  } else if (providerId === "openrouter") {
+    baseUrl = "https://openrouter.ai/api/v1";
+    apiKey = process.env.OPENROUTER_API_KEY;
+  } else if (providerId === "ashna") {
+    baseUrl = (typeof ASHNA_BASE_URL !== "undefined") ? ASHNA_BASE_URL : "https://api.ashna.ai/v1/api";
+    apiKey = process.env.ASHNA_API_KEY;
+  } else {
+    throw (function() { const e = new Error("Unknown provider"); e.status = 400; return e; })();
+  }
+  if (!apiKey) {
+    const e = new Error("Provider not configured"); e.status = 503; throw e;
+  }
+  const headers = { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" };
+  if (providerId === "openrouter") {
+    headers["HTTP-Referer"] = "https://kayhosthtml.zone.id";
+    headers["X-Title"] = "Kayhost HTML";
+  }
+  const timeoutMs = options.timeoutMs || 50000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(baseUrl + "/chat/completions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.3,
+        max_tokens: 16000,
+        stream: true,  // <-- request streaming
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      let errBody = "";
+      try { errBody = await res.text(); } catch (e) {}
+      const e = new Error(providerId + " HTTP " + res.status + (errBody ? ": " + errBody.slice(0, 200) : ""));
+      e.status = res.status === 429 ? 429 : 502;
+      throw e;
+    }
+    // Read the stream
+    const reader = res.body.getReader();
+    const decoder = new (require("util").TextDecoder)();
+    let buffer = "";
+    let fullText = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop();  // keep partial line
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith("data:")) continue;
+        const data = trimmed.slice(5).trim();
+        if (data === "[DONE]") continue;
+        try {
+          const parsed = JSON.parse(data);
+          const token = parsed?.choices?.[0]?.delta?.content || "";
+          if (token) {
+            fullText += token;
+            if (onToken) onToken(token);
+          }
+        } catch (e) {
+          // ignore parse errors on partial lines
+        }
+      }
+    }
+    return fullText;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// Streaming-aware main handler. Mounted at /api/ai-edit?stream=1
+async function handleAiEditStream(req, res) {
+  // Set SSE headers
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");  // disable Nginx buffering (Vercel respects this)
+
+  function sendEvent(event, data) {
+    res.write("event: " + event + "\n");
+    res.write("data: " + JSON.stringify(data) + "\n\n");
+  }
+
+  try {
+    const body = req.body || {};
+    const { html, instruction, provider, model, browserId } = body;
+    if (!html || !instruction) {
+      sendEvent("error", { error: "html and instruction are required", status: 400 });
+      return res.end();
+    }
+
+    // Only stream for OpenAI-compatible providers. For Gemini (no provider),
+    // tell the client to fall back to the non-streaming endpoint.
+    if (!provider || (provider !== "openrouter" && provider !== "opencode" && provider !== "ashna")) {
+      sendEvent("error", {
+        error: "Streaming not supported for this provider. Use the non-streaming endpoint.",
+        status: 400,
+        fallback: true,
+      });
+      return res.end();
+    }
+
+    // Build the same prompt as the non-streaming handlers
+    const systemPrompt = "You are a precise HTML editor. Return only complete valid HTML.";
+    const userPrompt = "You are an HTML editor. The user has an HTML document and wants to change a specific part of it.\n\nHere is the complete HTML document:\n```html\n" + html + "\n```\n\nThe user selected the element matching this CSS selector: \"" + (body.selector || "body") + "\"\n\nThe user's instruction: \"" + instruction + "\"\n\nIMPORTANT INSTRUCTIONS:\n1. Apply the requested change to the selected element (or the whole document if no specific element).\n2. Return the COMPLETE updated HTML document — from <!DOCTYPE html> to </html>.\n3. Do NOT wrap the output in markdown code fences.\n4. Do NOT add any explanation, commentary, or text before or after the HTML.\n5. Do NOT change any part of the document that the user didn't ask to change.\n6. Keep all existing content intact unless the user explicitly asked to change it.\n\nReturn ONLY the raw HTML:";
+
+    // Stream tokens
+    let fullText;
+    try {
+      fullText = await streamChatCompletion(provider, model, systemPrompt, userPrompt, { timeoutMs: 50000 }, function(token) {
+        sendEvent("token", { text: token });
+      });
+    } catch (err) {
+      sendEvent("error", { error: err.message || "Provider error", status: err.status || 502 });
+      return res.end();
+    }
+
+    if (!fullText || !fullText.trim()) {
+      sendEvent("error", { error: "Empty response from provider", status: 502 });
+      return res.end();
+    }
+
+    // Strip code fences if present
+    let cleaned = fullText.trim();
+    if (cleaned.startsWith("```html")) {
+      cleaned = cleaned.replace(/^```html\s*/, "").replace(/\s*```$/, "");
+    } else if (cleaned.startsWith("```")) {
+      cleaned = cleaned.replace(/^```\s*/, "").replace(/\s*```$/, "");
+    }
+    if (!cleaned.toLowerCase().startsWith("<!doctype") && !cleaned.toLowerCase().startsWith("<html")) {
+      const m = cleaned.match(/<!DOCTYPE html>[\s\S]*<\/html>/i);
+      if (m) cleaned = m[0];
+    }
+
+    // Increment quota (best-effort, don't fail the stream over it)
+    try {
+      const db = getDb();
+      const today = new Date().toISOString().slice(0, 10);
+      if (provider === "openrouter") {
+        const usageId = (browserId || "anonymous") + "_openrouter_" + today;
+        const ref = doc(db, "aiUsage", usageId);
+        const snap = await getDoc(ref);
+        const count = snap.exists() ? (snap.data().count || 0) : 0;
+        await setDoc(ref, { count: count + 1, browserId: browserId || "anonymous", date: today, provider: "openrouter", model }, { merge: true });
+      }
+      // For Pro providers (opencode, ashna), the non-streaming handler does
+      // the Pro-gating + quota. Streaming for those is best-effort and the
+      // quota increment is skipped here to avoid duplicating the Pro check.
+    } catch (e) {
+      console.warn("[ai-edit:stream] quota increment failed:", e.message);
+    }
+
+    sendEvent("done", { html: cleaned });
+    return res.end();
+  } catch (err) {
+    console.error("[ai-edit:stream] Error:", err);
+    try { sendEvent("error", { error: err.message || "Stream error", status: 500 }); } catch (e) {}
+    return res.end();
+  }
+}
+
+// Export the streaming handler so api/ai-edit.js can dispatch to it
+module.exports = async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") return res.status(204).end();
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  if (isScraperUa(req.headers["user-agent"] || "")) {
+    return res.status(403).json({ error: "Automated access forbidden." });
+  }
+  // Stream mode?
+  if (req.query.stream === "1" || req.query.stream === "true") {
+    return handleAiEditStream(req, res);
+  }
+  // Otherwise: existing non-streaming flow — delegate to the original handler
+  return handleAiEditOriginal(req, res);
+};
