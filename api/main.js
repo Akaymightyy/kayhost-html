@@ -29,6 +29,9 @@ const {
 // ===== Phase 1: Multi-page site support (additive, no impact on existing flows) =====
 const multipage = require("../lib/multipage");
 
+// ===== Clone upgrade: asset inlining + smart-scrape + multi-page crawl =====
+const cloneHelpers = require("../lib/clone-helpers");
+
 // ===== Shared scraper-blocker (since we can't use Edge Middleware without Next.js) =====
 function isScraperUa(ua) {
   if (!ua || ua.length < 20) return true;
@@ -280,39 +283,325 @@ async function handleClone(req, res) {
     html = `<!DOCTYPE html><html><head>${baseTag}</head><body>${html}</body></html>`;
   }
   let warning = null;
-  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  if (bodyMatch) {
-    const bodyText = bodyMatch[1].replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<[^>]+>/g, "").trim();
-    const hasRootDiv = /<div[^>]+id=["']?(root|app)["']?/i.test(html);
-    if (bodyText.length < 100 || (hasRootDiv && bodyText.length < 200)) {
+  // === Part 2: JS-shell detection + Browserless smart-scrape fallback ===
+  // If the fetched HTML looks like a JS-rendered shell, try Browserless /smart-scrape
+  // to get the rendered HTML. If that succeeds, use the rendered HTML instead.
+  // If it fails or times out, fall back to the raw HTML with a warning.
+  if (cloneHelpers.looksLikeJsShell(html)) {
+    if (process.env.BROWSERLESS_API_KEY) {
+      const scraped = await cloneHelpers.smartScrapeRender(finalUrl);
+      if (scraped.ok && scraped.html) {
+        // Replace the html with the rendered version. Re-inject the <base> tag.
+        let renderedHtml = scraped.html;
+        if (/<head[^>]*>/i.test(renderedHtml)) {
+          renderedHtml = renderedHtml.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`);
+        } else if (/<html[^>]*>/i.test(renderedHtml)) {
+          renderedHtml = renderedHtml.replace(/<html([^>]*)>/i, `<html$1><head>${baseTag}</head>`);
+        } else {
+          renderedHtml = `<!DOCTYPE html><html><head>${baseTag}</head><body>${renderedHtml}</body></html>`;
+        }
+        html = renderedHtml;
+        warning = null;  // smart-scrape gave us rendered content, no warning needed
+      } else {
+        // Smart-scrape failed — keep the raw HTML, warn the user
+        warning = "This page uses JavaScript rendering — the clone may be incomplete. (" + (scraped.error || "smart-scrape failed") + ")";
+        console.warn("[clone] smart-scrape failed:", scraped.error);
+      }
+    } else {
+      // No BROWSERLESS_API_KEY configured — show the existing warning
       warning = "This page may require JavaScript to render — the cloned copy might look mostly blank. This is common with React, Vue, and other SPA frameworks.";
     }
+  } else {
+    // Existing warning logic for pages that aren't JS shells but might still have minimal content
+    const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    if (bodyMatch) {
+      const bodyText = bodyMatch[1].replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<[^>]+>/g, "").trim();
+      const hasRootDiv = /<div[^>]+id=["']?(root|app)["']?/i.test(html);
+      if (bodyText.length < 100 || (hasRootDiv && bodyText.length < 200)) {
+        warning = "This page may require JavaScript to render — the cloned copy might look mostly blank. This is common with React, Vue, and other SPA frameworks.";
+      }
+    }
   }
+
+  // === Part 1: Asset inlining ===
+  // Inline linked CSS, JS, and image assets. Stops when the time budget is exhausted.
+  // Time budget: 6 seconds (leaves ~2s of the 8s total for the initial fetch above).
+  // Note: we measure from NOW (after the fetch), not from the start of the request,
+  // so if the fetch took 3s we have 6s for inlining — which is fine because the
+  // overall response time will be 9s max (1s over the original 8s, but well under
+  // the 60s Vercel function max).
+  let inlinedCount = 0, skippedCount = 0, timedOut = false;
+  try {
+    const result = await cloneHelpers.inlineAssets(html, finalUrl, cloneHelpers.MAX_TOTAL_INLINE_MS);
+    html = result.html;
+    inlinedCount = result.inlinedCount;
+    skippedCount = result.skippedCount;
+    timedOut = result.timedOut;
+  } catch (e) {
+    console.warn("[clone] Asset inlining failed (continuing with un-inlined HTML):", e.message);
+  }
+  if (timedOut) {
+    // Add a soft warning if we hit the time budget
+    warning = (warning ? warning + " " : "") + "Some assets were not inlined (time budget exhausted) — they remain as external references.";
+  }
+
   let links = [];
   try {
-    const finalHost = new URL(finalUrl).hostname.toLowerCase();
-    const selfKey = finalUrl.split("#")[0].replace(/\/$/, "");
-    const seen = new Set([selfKey]);
-    const linkRegex = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-    let m;
-    while ((m = linkRegex.exec(html)) && links.length < 10) {
-      const href = m[1];
-      if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:") || href.startsWith("javascript:")) continue;
-      let abs;
-      try { abs = new URL(href, finalUrl); } catch (e) { continue; }
-      if (abs.protocol !== "http:" && abs.protocol !== "https:") continue;
-      if (abs.hostname.toLowerCase() !== finalHost) continue;
-      abs.hash = "";
-      const key = abs.href.replace(/\/$/, "");
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const label = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 40) || abs.pathname;
-      links.push({ url: abs.href, label });
-    }
+    links = cloneHelpers.extractSameDomainLinks(html, finalUrl, 10);
   } catch (e) {
     console.warn("[clone] Link discovery failed:", e.message);
   }
-  return res.status(200).json({ html, warning, links });
+  return res.status(200).json({ html, warning, links, inlinedCount, skippedCount });
+}
+
+// ===== Part 3: Multi-page clone (SSE — streams progress) =====
+// POST /api/clone-multi
+//   body: { url, browserId, uid }
+// Response: Server-Sent Events stream
+//   event: progress  data: {"message": "...", "page": 3, "total": 10}
+//   event: done       data: {"projectId": "abc123", "url": "https://host/p/abc123", "pages": [...]}
+//   event: error      data: {"error": "..."}
+//
+// Crawl up to 10 same-domain pages, inline assets on each, store as a multi-page
+// project in Firestore `projects` collection. Respects robots.txt.
+async function handleCloneMulti(req, res) {
+  // Set SSE headers
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+
+  function sendEvent(event, data) {
+    res.write("event: " + event + "\n");
+    res.write("data: " + JSON.stringify(data) + "\n\n");
+  }
+
+  if (req.method !== "POST") {
+    sendEvent("error", { error: "Method not allowed" });
+    return res.end();
+  }
+  const { url, browserId, uid } = req.body || {};
+  if (!url) {
+    sendEvent("error", { error: "URL required" });
+    return res.end();
+  }
+
+  // === SSRF checks (same as handleClone) ===
+  let parsedUrl;
+  try { parsedUrl = new URL(url); } catch (e) {
+    sendEvent("error", { error: "Invalid URL. Must start with http:// or https://" });
+    return res.end();
+  }
+  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+    sendEvent("error", { error: "Only http:// and https:// URLs are allowed." });
+    return res.end();
+  }
+  const hostname = parsedUrl.hostname.toLowerCase();
+  const blockedHosts = ["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]", "metadata.google.internal"];
+  for (const h of blockedHosts) {
+    if (hostname === h || hostname.endsWith("." + h)) {
+      sendEvent("error", { error: "This URL points to an internal/private address and cannot be cloned." });
+      return res.end();
+    }
+  }
+  const ipMatch = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (ipMatch) {
+    const [_, a, b] = ipMatch.map(Number);
+    if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || (a === 127)) {
+      sendEvent("error", { error: "This URL points to a private/internal IP range and cannot be cloned." });
+      return res.end();
+    }
+  }
+
+  // === Robots.txt check ===
+  sendEvent("progress", { message: "Checking robots.txt…", page: 0, total: 0 });
+  const robots = await cloneHelpers.checkRobotsTxt(url);
+  if (!robots.allowed) {
+    sendEvent("error", { error: "Crawling disallowed by robots.txt: " + robots.reason });
+    return res.end();
+  }
+
+  // === Fetch the initial page (same logic as handleClone) ===
+  sendEvent("progress", { message: "Fetching initial page…", page: 0, total: 0 });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  let fetchRes, finalUrl = url;
+  try {
+    fetchRes = await fetch(url, { headers: { "User-Agent": "KayhostHTML/1.0" }, redirect: "follow", signal: controller.signal });
+    clearTimeout(timeout);
+    finalUrl = fetchRes.url || url;
+    const finalParsed = new URL(finalUrl);
+    const finalHost = finalParsed.hostname.toLowerCase();
+    const finalIpMatch = finalHost.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+    if (finalIpMatch) {
+      const [_, a, b] = finalIpMatch.map(Number);
+      if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || (a === 127)) {
+        sendEvent("error", { error: "This URL redirected to a private/internal address and cannot be cloned." });
+        return res.end();
+      }
+    }
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err.name === "AbortError") {
+      sendEvent("error", { error: "That site took too long to respond (8s timeout). Try a different URL." });
+    } else {
+      sendEvent("error", { error: "Couldn't fetch that URL. (" + (err.message || "unknown error").slice(0, 80) + ")" });
+    }
+    return res.end();
+  }
+  if (!fetchRes.ok) {
+    sendEvent("error", { error: "The target site returned HTTP " + fetchRes.status + "." });
+    return res.end();
+  }
+  let initialHtml = await fetchRes.text();
+  if (initialHtml.length > 5 * 1024 * 1024) {
+    sendEvent("error", { error: "That page is too large (>5MB). Try a smaller page." });
+    return res.end();
+  }
+
+  // === Part 2: smart-scrape fallback for the initial page ===
+  let warning = null;
+  if (cloneHelpers.looksLikeJsShell(initialHtml) && process.env.BROWSERLESS_API_KEY) {
+    sendEvent("progress", { message: "Page looks JS-rendered — using Browserless to get rendered HTML…", page: 0, total: 0 });
+    const scraped = await cloneHelpers.smartScrapeRender(finalUrl);
+    if (scraped.ok && scraped.html) {
+      initialHtml = scraped.html;
+    } else {
+      warning = "Initial page uses JavaScript rendering — the clone may be incomplete. (" + (scraped.error || "smart-scrape failed") + ")";
+    }
+  }
+
+  // === Extract same-domain links for crawling ===
+  const links = cloneHelpers.extractSameDomainLinks(initialHtml, finalUrl, cloneHelpers.MULTI_PAGE_MAX_PAGES);
+  const totalPages = 1 + links.length;  // initial + crawled
+  sendEvent("progress", { message: "Found " + links.length + " same-domain link(s) to crawl. Starting…", page: 0, total: totalPages });
+
+  // === Build the files map (start with the initial page) ===
+  const files = {};
+  const initialFilePath = "index.html";
+  // Inline assets on the initial page
+  sendEvent("progress", { message: "Inlining assets on initial page…", page: 1, total: totalPages });
+  let inlinedInitial;
+  try {
+    inlinedInitial = await cloneHelpers.inlineAssets(initialHtml, finalUrl, cloneHelpers.MAX_TOTAL_INLINE_MS);
+  } catch (e) {
+    inlinedInitial = { html: initialHtml, inlinedCount: 0, skippedCount: 0, timedOut: false };
+  }
+  // Inject <base> tag so any remaining relative URLs still resolve
+  const initialBaseTag = '<base href="' + escapeAttr(finalUrl) + '">';
+  let initialFinal = inlinedInitial.html;
+  if (/<head[^>]*>/i.test(initialFinal)) {
+    initialFinal = initialFinal.replace(/<head([^>]*)>/i, "<head$1>" + initialBaseTag);
+  }
+  files[initialFilePath] = initialFinal;
+
+  // === Crawl each linked page ===
+  let crawledCount = 0;
+  for (let i = 0; i < links.length; i++) {
+    const link = links[i];
+    const pageNum = i + 2;  // 1-indexed, initial was page 1
+    sendEvent("progress", {
+      message: "Cloning page " + pageNum + " of " + totalPages + ": " + link.label,
+      page: pageNum,
+      total: totalPages,
+      url: link.url,
+    });
+
+    // Robots.txt check for each page (in case the site disallows specific paths)
+    const pageRobots = await cloneHelpers.checkRobotsTxt(link.url);
+    if (!pageRobots.allowed) {
+      console.log("[clone-multi] Skipping " + link.url + " (robots.txt: " + pageRobots.reason + ")");
+      continue;
+    }
+
+    // Fetch the page (with per-page timeout)
+    const pageController = new AbortController();
+    const pageTimeout = setTimeout(() => pageController.abort(), 8000);
+    let pageRes;
+    try {
+      pageRes = await fetch(link.url, {
+        headers: { "User-Agent": "KayhostHTML/1.0 (clone crawler)" },
+        redirect: "follow",
+        signal: pageController.signal,
+      });
+      clearTimeout(pageTimeout);
+      if (!pageRes.ok) {
+        console.warn("[clone-multi] Skipping " + link.url + " (HTTP " + pageRes.status + ")");
+        continue;
+      }
+    } catch (err) {
+      clearTimeout(pageTimeout);
+      console.warn("[clone-multi] Skipping " + link.url + " (" + (err.message || "fetch failed") + ")");
+      continue;
+    }
+    let pageHtml = await pageRes.text();
+    if (pageHtml.length > 5 * 1024 * 1024) continue;
+
+    // smart-scrape fallback for this page too
+    if (cloneHelpers.looksLikeJsShell(pageHtml) && process.env.BROWSERLESS_API_KEY) {
+      const scraped = await cloneHelpers.smartScrapeRender(link.url);
+      if (scraped.ok && scraped.html) {
+        pageHtml = scraped.html;
+      }
+      // If smart-scrape fails, use whatever we got — don't skip
+    }
+
+    // Inline assets on this page
+    let inlinedPage;
+    try {
+      inlinedPage = await cloneHelpers.inlineAssets(pageHtml, link.url, cloneHelpers.MAX_TOTAL_INLINE_MS);
+    } catch (e) {
+      inlinedPage = { html: pageHtml, inlinedCount: 0, skippedCount: 0, timedOut: false };
+    }
+    // Inject <base> tag
+    const pageBaseTag = '<base href="' + escapeAttr(link.url) + '">';
+    let pageFinal = inlinedPage.html;
+    if (/<head[^>]*>/i.test(pageFinal)) {
+      pageFinal = pageFinal.replace(/<head([^>]*)>/i, "<head$1>" + pageBaseTag);
+    }
+
+    // Compute the file path for this page
+    const filePath = cloneHelpers.urlToFilePath(link.url);
+    // Avoid overwriting index.html if the link happened to be the root
+    if (filePath === "index.html") continue;
+    files[filePath] = pageFinal;
+    crawledCount++;
+  }
+
+  // === Store as a multi-page project in Firestore ===
+  sendEvent("progress", { message: "Storing " + Object.keys(files).length + " pages as a project…", page: totalPages, total: totalPages });
+  try {
+    const projectId = Math.random().toString(36).slice(2, 8);
+    const now = Date.now();
+    const db = getDb();
+    const pathMap = multipage.buildPathMap(files);
+    await setDoc(doc(db, "projects", projectId), {
+      id: projectId,
+      title: "Cloned from " + hostname,
+      browserId: browserId || "anonymous",
+      ownerUid: uid || null,
+      createdAt: now,
+      expiresAt: null,  // multi-page clones don't expire by default
+      files,
+      pathMap,
+      clonedFrom: finalUrl,
+    });
+    const baseUrl = "https://" + req.headers.host;
+    const projectUrl = baseUrl + "/p/" + projectId;
+    sendEvent("done", {
+      projectId,
+      url: projectUrl,
+      pages: Object.keys(files).map(function(fp) {
+        return { path: fp, url: projectUrl + (pathMap["/" + fp.replace(/\.html$/, "").replace(/index$/, "")] || "") };
+      }),
+      pageCount: Object.keys(files).length,
+      warning,
+    });
+  } catch (err) {
+    console.error("[clone-multi] Storage failed:", err);
+    sendEvent("error", { error: "Failed to store the cloned project: " + (err.message || "unknown error") });
+  }
+  return res.end();
 }
 
 // --- route=save-user (from old api/save-user.js) ---
@@ -1013,6 +1302,7 @@ module.exports = async (req, res) => {
     case "media-list":       return handleMediaList(req, res);
     case "media-delete":     return handleMediaDelete(req, res);
     case "clone":            return handleClone(req, res);
+    case "clone-multi":      return handleCloneMulti(req, res);
     case "save-user":        return handleSaveUser(req, res);
     case "settings":        return handleSettings(req, res);
     case "user-profile":    return handleUserProfile(req, res);
