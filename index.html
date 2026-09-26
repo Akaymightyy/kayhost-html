@@ -473,6 +473,8 @@
         <button data-view="templates" onclick="switchView('templates')">Templates</button>
         <button data-view="clipboard" onclick="switchView('clipboard')">Clipboard</button>
         <button data-view="tools" onclick="switchView('tools')">Tools</button>
+        <button data-view="media" onclick="switchView('media')">Media</button>
+        <button data-view="api" onclick="switchView('api')">API</button>
         <button data-view="settings" onclick="switchView('settings')">Settings</button>
         <a href="#features">Features</a>
         <a href="#faq">FAQ</a>
@@ -520,6 +522,14 @@
     <button class="drawer-item" data-view="clipboard" onclick="closeNavDrawer(); switchView('clipboard')">
       <span class="icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg></span>
       <span>Clipboard</span>
+    </button>
+    <button class="drawer-item" data-view="media" onclick="closeNavDrawer(); switchView('media')">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      Media Library
+    </button>
+    <button class="drawer-item" data-view="api" onclick="closeNavDrawer(); switchView('api')">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+      API Tokens
     </button>
     <button class="drawer-item" data-view="tools" onclick="closeNavDrawer(); switchView('tools')">
       <span class="icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
@@ -925,6 +935,67 @@
     </div>
   </main>
 
+  <!-- ===== Phase 2: Media Library view ===== -->
+  <main id="view-media" class="container dashboard-view" style="padding-top: 32px; display: none;">
+    <h2 class="section-title">Media Library</h2>
+    <p style="color:var(--fg-secondary);font-size:14px;margin-bottom:20px;">Upload images and assets. Copy the URL to paste into your HTML/CSS. Scoped to your account.</p>
+
+    <div class="editor-card" style="margin-bottom:20px;">
+      <h3 style="font-size:15px;margin-bottom:12px;">Upload</h3>
+      <input type="file" id="media-upload-input" accept="image/*" multiple style="margin-bottom:10px;" />
+      <button class="btn btn-purple" onclick="uploadMediaFiles()">Upload selected</button>
+      <p style="font-size:12px;color:var(--fg-muted);margin-top:8px;">Images only (PNG, JPG, GIF, WebP, SVG). Stored on Cloudinary.</p>
+    </div>
+
+    <div class="editor-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="font-size:15px;">Your media</h3>
+        <button class="btn btn-ghost btn-sm" onclick="loadMediaLibrary()">Refresh</button>
+      </div>
+      <div id="media-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(140px, 1fr));gap:12px;">
+        <p style="color:var(--fg-muted);grid-column:1/-1;text-align:center;padding:24px;">Click "Refresh" to load your media.</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===== Phase 6: API Tokens view ===== -->
+  <main id="view-api" class="container dashboard-view" style="padding-top: 32px; display: none;">
+    <h2 class="section-title">API Tokens</h2>
+    <p style="color:var(--fg-secondary);font-size:14px;margin-bottom:20px;">Generate bearer tokens to deploy and manage sites programmatically. Tokens are hashed (SHA-256) — we only show the plain token ONCE at creation time.</p>
+
+    <div class="editor-card" style="margin-bottom:20px;">
+      <h3 style="font-size:15px;margin-bottom:12px;">Create new token</h3>
+      <input type="text" id="api-token-label" class="input" placeholder="Label (e.g. CI, My Script)" style="margin-bottom:10px;" />
+      <button class="btn btn-purple" onclick="createApiToken()">Generate token</button>
+    </div>
+
+    <div class="editor-card" style="margin-bottom:20px;">
+      <h3 style="font-size:15px;margin-bottom:12px;">REST API endpoints</h3>
+      <pre style="background:var(--bg);padding:12px;border-radius:8px;font-size:12px;overflow-x:auto;color:var(--fg-secondary);">GET    /api/api-sites            List your sites
+POST   /api/api-deploy           Deploy a new site
+POST   /api/api-delete           Delete a site
+
+# Example: list sites
+curl -H "Authorization: Bearer kayh_..." https://kayhosthtml.zone.id/api/api-sites
+
+# Example: deploy
+curl -X POST -H "Authorization: Bearer kayh_..." \\
+     -H "Content-Type: application/json" \\
+     -d '{"html":"<h1>Hello</h1>","title":"Test","ttl":"7d"}' \\
+     https://kayhosthtml.zone.id/api/api-deploy</pre>
+    </div>
+
+    <div class="editor-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="font-size:15px;">Your tokens</h3>
+        <button class="btn btn-ghost btn-sm" onclick="loadApiTokens()">Refresh</button>
+      </div>
+      <div id="api-tokens-list">
+        <p style="color:var(--fg-muted);text-align:center;padding:24px;">Click "Refresh" to load your tokens.</p>
+      </div>
+    </div>
+  </main>
+
   <!-- ===== Settings view ===== -->
   <main id="view-settings" class="container dashboard-view" style="padding-top: 32px;">
     <h2 class="section-title">Settings</h2>
@@ -1313,7 +1384,7 @@
 
     function switchView(view, opts) {
       // Hide all views
-      ["new", "sites", "templates", "clipboard", "tools", "settings", "admin", "docs", "changelog", "pricing", "privacy", "terms"].forEach(v => {
+      ["new", "sites", "templates", "clipboard", "tools", "media", "api", "settings", "admin", "docs", "changelog", "pricing", "privacy", "terms"].forEach(v => {
         const el = document.getElementById("view-" + v);
         if (el) { el.classList.remove("visible"); el.style.display = "none"; }
       });
@@ -1332,13 +1403,15 @@
         }
       }
       // Update document title
-      const titles = { new:"Kayhost HTML", sites:"My Sites — Kayhost", templates:"Templates — Kayhost", clipboard:"Clipboard — Kayhost", tools:"Tools — Kayhost", settings:"Settings — Kayhost", pricing:"Pricing — Kayhost", admin:"Admin — Kayhost" };
+      const titles = { new:"Kayhost HTML", sites:"My Sites — Kayhost", templates:"Templates — Kayhost", clipboard:"Clipboard — Kayhost", tools:"Tools — Kayhost", media:"Media Library — Kayhost", api:"API Tokens — Kayhost", settings:"Settings — Kayhost", pricing:"Pricing — Kayhost", admin:"Admin — Kayhost" };
       document.title = titles[view] || "Kayhost HTML";
       // Load data if needed
       if (view === "sites") loadSites();
       if (view === "clipboard") loadClipboard();
       if (view === "settings") { showBrowserId(); renderByokSettings(); }
       if (view === "templates") { try { loadSavedTemplatesIntoView(); } catch(e) {} }
+      if (view === "media") { try { loadMediaLibrary(); } catch(e) {} }
+      if (view === "api") { try { loadApiTokens(); } catch(e) {} }
       if (view === "admin") { /* admin data loaded by the module script */ }
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -2292,6 +2365,126 @@
       document.head.appendChild(style);
     }
 
+    // ===== Phase 3: Streaming AI edit (SSE) =====
+    // Tries streaming first for OpenAI-compatible providers (openrouter, opencode, ashna).
+    // Falls back to the non-streaming applyAiEdit flow if streaming unsupported or fails.
+    // Returns true if streaming succeeded, false to indicate the caller should fallback.
+    async function tryStreamAiEdit(modelChoice, htmlToSend, selector, inst, onToken) {
+      // Determine provider from model prefix
+      let provider = null, providerModel = null;
+      if (modelChoice && modelChoice.indexOf("openrouter:") === 0) {
+        provider = "openrouter";
+        providerModel = modelChoice.slice("openrouter:".length);
+      } else if (modelChoice && modelChoice.indexOf("opencode:") === 0) {
+        provider = "opencode";
+        providerModel = modelChoice.slice("opencode:".length);
+      } else if (modelChoice && modelChoice.indexOf("ashna:") === 0) {
+        provider = "ashna";
+        providerModel = modelChoice.slice("ashna:".length);
+      } else {
+        return { ok: false, reason: "no-stream-provider" };
+      }
+
+      // For Pro providers (ashna, opencode), get the Firebase ID token
+      let authToken = null;
+      if (provider === "ashna" || provider === "opencode") {
+        try { authToken = await getIdTokenForAdmin(); } catch (e) { return { ok: false, reason: "auth-failed" }; }
+        if (!authToken) return { ok: false, reason: "auth-failed" };
+      }
+
+      try {
+        const res = await fetch("/api/ai-edit?stream=1", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(authToken ? { "Authorization": "Bearer " + authToken } : {}),
+          },
+          body: JSON.stringify({
+            html: htmlToSend,
+            selector: selector || null,
+            instruction: inst,
+            browserId: getBrowserId(),
+            provider,
+            model: providerModel,
+          }),
+        });
+
+        if (!res.ok) {
+          return { ok: false, reason: "http-" + res.status, error: (await res.json().catch(() => ({}))).error };
+        }
+
+        // Read the SSE stream
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let fullText = "";
+        let finalHtml = null;
+        let streamError = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          // SSE events are separated by \n\n
+          const events = buffer.split("\n\n");
+          buffer = events.pop();  // keep partial
+          for (const evt of events) {
+            const lines = evt.split("\n");
+            let eventType = "message", dataStr = "";
+            for (const line of lines) {
+              if (line.startsWith("event:")) eventType = line.slice(6).trim();
+              else if (line.startsWith("data:")) dataStr += line.slice(5).trim();
+            }
+            if (!dataStr) continue;
+            let data;
+            try { data = JSON.parse(dataStr); } catch (e) { continue; }
+            if (eventType === "token" && data.text) {
+              fullText += data.text;
+              if (onToken) onToken(data.text, fullText);
+            } else if (eventType === "done") {
+              finalHtml = data.html;
+            } else if (eventType === "error") {
+              streamError = data.error || "Stream error";
+              if (data.fallback) return { ok: false, reason: "fallback" };
+            }
+          }
+        }
+
+        if (streamError) return { ok: false, reason: "stream-error", error: streamError };
+        if (!finalHtml) return { ok: false, reason: "no-done-event" };
+        return { ok: true, html: finalHtml };
+      } catch (err) {
+        if (err.name === "AbortError") return { ok: false, reason: "timeout" };
+        return { ok: false, reason: "fetch-failed", error: err.message };
+      }
+    }
+
+    // ===== Phase 3: Live streaming preview =====
+    // Updates the preview iframe with partial HTML as tokens stream in.
+    // Throttled to ~1 update per 500ms so we don't thrash the iframe.
+    let _streamPreviewTimer = null;
+    let _streamPreviewHtml = "";
+    function updateStreamPreview(partialHtml) {
+      _streamPreviewHtml = partialHtml;
+      if (_streamPreviewTimer) return;
+      _streamPreviewTimer = setTimeout(function() {
+        _streamPreviewTimer = null;
+        // Only update if the partial HTML looks like it has a real structure
+        // (starts with <!doctype or <html, or contains <body)
+        const lower = _streamPreviewHtml.toLowerCase().trim();
+        if (lower.startsWith("<!doctype") || lower.startsWith("<html") || lower.includes("<body")) {
+          try {
+            const iframe = document.getElementById("preview-iframe");
+            if (iframe && iframe.contentDocument) {
+              iframe.contentDocument.open();
+              iframe.contentDocument.write(_streamPreviewHtml);
+              iframe.contentDocument.close();
+            }
+          } catch (e) { /* ignore — iframe may not be ready */ }
+        }
+      }, 500);
+    }
+
     async function applyAiEdit() {
       const inst = document.getElementById("ai-instruction").value.trim();
       if (!inst) { toast("Describe what you want to change", "error"); return; }
@@ -2304,6 +2497,41 @@
       try {
         const modelChoice = document.getElementById("ai-model").value;
         let html;
+
+        // ===== Phase 3: Try streaming first for OpenAI-compatible providers =====
+        // If the provider supports streaming, show tokens live in the preview
+        // and return the final HTML. If streaming fails or unsupported, fall
+        // through to the non-streaming branches below (unchanged).
+        const htmlToSendForStream = (typeof _files !== "undefined" && _files.length > 1) ? mergeFilesToHtml() : currentHtml;
+        const streamResult = await tryStreamAiEdit(modelChoice, htmlToSendForStream, selectedSelector, inst, function(token, fullTextSoFar) {
+          // Live preview update — throttled inside updateStreamPreview
+          updateStreamPreview(fullTextSoFar);
+          showAiStatus("loading", "Generating… " + fullTextSoFar.length + " chars received");
+        });
+        if (streamResult.ok) {
+          html = streamResult.html;
+          clearTimeout(timeout);
+          // Skip the non-streaming branches — go straight to applying the result
+          previousHtml = currentHtml;
+          currentHtml = html;
+          document.getElementById("html-input").value = html;
+          updatePreview();
+          toast("AI applied the change (streamed)", "success");
+          showAiStatus("success", "Change applied. The preview has been updated.");
+          document.getElementById("ai-instruction").value = "";
+          _aiLoading = false;
+          btn.disabled = false; btn.textContent = "Apply";
+          return;
+        }
+        // Streaming failed or unsupported — reset the preview and fall through
+        // to the non-streaming path. Restore the original HTML in the preview
+        // so the user doesn't see a half-written page.
+        updatePreview();  // restore original
+        showAiStatus("loading");
+        // If the stream emitted an error, show it but still try non-streaming
+        if (streamResult.error && streamResult.reason !== "no-stream-provider" && streamResult.reason !== "fallback") {
+          console.warn("[ai-edit] Stream failed (" + streamResult.reason + "), falling back to non-streaming:", streamResult.error);
+        }
 
         // --- Ashna branch (Pro-only, server-side key + Firebase token) ---
         // Ashna model option values are prefixed with "ashna:" so we can dispatch
@@ -4581,6 +4809,171 @@ Return ONLY the raw HTML:`;
     window.closePaystackStatus = function() {
       const modal = document.getElementById("paystack-status-modal");
       if (modal) modal.classList.add("hidden");
+    };
+
+    // ===================================================================
+    // ===== Phase 2: Media Library (additive, no existing code touched) =====
+    // ===================================================================
+    async function loadMediaLibrary() {
+      const grid = document.getElementById("media-grid");
+      if (!grid) return;
+      grid.innerHTML = '<p style="color:var(--fg-muted);grid-column:1/-1;text-align:center;padding:24px;">Loading…</p>';
+      try {
+        const u = window.currentUser || null;
+        const uid = u ? u.uid : null;
+        const browserId = getBrowserId();
+        const url = "/api/media-list?browserId=" + encodeURIComponent(browserId) + (uid ? "&uid=" + encodeURIComponent(uid) : "");
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        if (!data.media || data.media.length === 0) {
+          grid.innerHTML = '<p style="color:var(--fg-muted);grid-column:1/-1;text-align:center;padding:24px;">No media yet. Upload some images above.</p>';
+          return;
+        }
+        grid.innerHTML = data.media.map(function(m) {
+          return '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg-card);">' +
+            '<div style="aspect-ratio:1;background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;">' +
+              '<img src="' + escapeHtml(m.url) + '" alt="" style="max-width:100%;max-height:100%;object-fit:contain;" />' +
+            '</div>' +
+            '<div style="padding:8px;">' +
+              '<div style="font-size:11px;color:var(--fg-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:6px;">' + escapeHtml(m.filename || "untitled") + '</div>' +
+              '<div style="display:flex;gap:4px;">' +
+                '<button class="btn btn-ghost btn-sm" style="flex:1;font-size:10px;padding:4px 6px;" onclick="copyMediaUrl(\'' + escapeHtml(m.url) + '\')">Copy URL</button>' +
+                '<button class="btn btn-ghost btn-sm" style="font-size:10px;padding:4px 6px;color:#ef4444;" onclick="deleteMedia(\'' + escapeHtml(m.id) + '\')">Del</button>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+        }).join("");
+      } catch (err) {
+        grid.innerHTML = '<p style="color:#ef4444;grid-column:1/-1;text-align:center;padding:24px;">' + escapeHtml(err.message) + '</p>';
+      }
+    }
+    window.loadMediaLibrary = loadMediaLibrary;
+
+    async function uploadMediaFiles() {
+      const input = document.getElementById("media-upload-input");
+      if (!input || !input.files || !input.files.length) {
+        toast("Select one or more images first", "error");
+        return;
+      }
+      const u = window.currentUser || null;
+      const uid = u ? u.uid : null;
+      const browserId = getBrowserId();
+      let ok = 0, fail = 0;
+      for (const file of Array.from(input.files)) {
+        try {
+          const reader = new FileReader();
+          const dataUrl = await new Promise((res, rej) => { reader.onload = () => res(reader.result); reader.onerror = rej; reader.readAsDataURL(file); });
+          const res = await fetch("/api/media", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ data: dataUrl, filename: file.name, mimeType: file.type, browserId, uid }),
+          });
+          if (res.ok) ok++; else fail++;
+        } catch (e) { fail++; }
+      }
+      input.value = "";
+      toast((ok > 0 ? "Uploaded " + ok + " file(s)" : "") + (fail > 0 ? ", " + fail + " failed" : ""), ok > 0 ? "success" : "error");
+      loadMediaLibrary();
+    }
+    window.uploadMediaFiles = uploadMediaFiles;
+
+    window.copyMediaUrl = function(url) {
+      navigator.clipboard.writeText(url).then(() => toast("URL copied", "success"));
+    };
+
+    window.deleteMedia = async function(id) {
+      if (!confirm("Delete this media? The URL will stop appearing in your library.")) return;
+      const u = window.currentUser || null;
+      const uid = u ? u.uid : null;
+      try {
+        const res = await fetch("/api/media-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, browserId: getBrowserId(), uid }),
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        toast("Deleted", "success");
+        loadMediaLibrary();
+      } catch (e) { toast(e.message, "error"); }
+    };
+
+    // ===================================================================
+    // ===== Phase 6: API Tokens (additive) =====
+    // ===================================================================
+    async function loadApiTokens() {
+      const list = document.getElementById("api-tokens-list");
+      if (!list) return;
+      list.innerHTML = '<p style="color:var(--fg-muted);text-align:center;padding:24px;">Loading…</p>';
+      try {
+        const u = window.currentUser || null;
+        if (!u || !u.uid) {
+          list.innerHTML = '<p style="color:var(--fg-muted);text-align:center;padding:24px;">Sign in to manage API tokens.</p>';
+          return;
+        }
+        const res = await fetch("/api/api-token-list?uid=" + encodeURIComponent(u.uid));
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        if (!data.tokens || data.tokens.length === 0) {
+          list.innerHTML = '<p style="color:var(--fg-muted);text-align:center;padding:24px;">No tokens yet. Generate one above.</p>';
+          return;
+        }
+        list.innerHTML = data.tokens.map(function(t) {
+          const created = t.createdAt ? new Date(t.createdAt).toLocaleString() : "";
+          const lastUsed = t.lastUsedAt ? new Date(t.lastUsedAt).toLocaleString() : "never";
+          return '<div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;background:var(--bg-card);">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+              '<strong style="font-size:14px;">' + escapeHtml(t.label || "API Token") + '</strong>' +
+              '<button class="btn btn-ghost btn-sm" style="color:#ef4444;font-size:11px;padding:4px 8px;" onclick="deleteApiToken(\'' + escapeHtml(t.id) + '\')">Delete</button>' +
+            '</div>' +
+            '<div style="font-size:11px;color:var(--fg-muted);">Created: ' + escapeHtml(created) + ' · Last used: ' + escapeHtml(lastUsed) + '</div>' +
+          '</div>';
+        }).join("");
+      } catch (err) {
+        list.innerHTML = '<p style="color:#ef4444;text-align:center;padding:24px;">' + escapeHtml(err.message) + '</p>';
+      }
+    }
+    window.loadApiTokens = loadApiTokens;
+
+    async function createApiToken() {
+      const u = window.currentUser || null;
+      if (!u || !u.uid) { toast("Sign in to create API tokens", "error"); return; }
+      const label = (document.getElementById("api-token-label").value || "").trim() || "API Token";
+      try {
+        const res = await fetch("/api/api-token-create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uid: u.uid, label }),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+        const data = await res.json();
+        // Show the token ONCE
+        document.getElementById("api-token-label").value = "";
+        toast("Token created — copy it now, you won't see it again", "success");
+        const list = document.getElementById("api-tokens-list");
+        list.innerHTML = '<div style="border:1px solid #10b981;border-radius:8px;padding:12px;margin-bottom:8px;background:rgba(16,185,129,0.08);">' +
+          '<div style="font-size:12px;color:#10b981;font-weight:700;margin-bottom:6px;">NEW TOKEN — copy now (shown once):</div>' +
+          '<code style="display:block;background:var(--bg);padding:8px;border-radius:6px;font-size:12px;word-break:break-all;color:var(--fg);">' + escapeHtml(data.token) + '</code>' +
+          '<button class="btn btn-ghost btn-sm" style="margin-top:8px;font-size:11px;" onclick="navigator.clipboard.writeText(\'' + escapeHtml(data.token) + '\').then(() => toast(\'Copied\', \'success\'))">Copy token</button>' +
+        '</div>' + list.innerHTML;
+      } catch (e) { toast(e.message, "error"); }
+    }
+    window.createApiToken = createApiToken;
+
+    window.deleteApiToken = async function(id) {
+      if (!confirm("Delete this token? Any scripts using it will stop working immediately.")) return;
+      const u = window.currentUser || null;
+      if (!u || !u.uid) return;
+      try {
+        const res = await fetch("/api/api-token-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, uid: u.uid }),
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        toast("Token deleted", "success");
+        loadApiTokens();
+      } catch (e) { toast(e.message, "error"); }
     };
   </script>
 </body>
