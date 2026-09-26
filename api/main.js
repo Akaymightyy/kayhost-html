@@ -85,6 +85,117 @@ function deserializeProjectFiles(docData) {
   return { files, pathMap };
 }
 
+// ===== Subcollection storage helpers =====
+// Firestore has a 1MB per-document limit. When a multi-page project has 10+ pages
+// with inlined assets (base64 fonts/images), the combined filesJson string can
+// easily exceed 1MB, causing the write to silently hang or fail.
+//
+// Solution: store each page as a SEPARATE document in a subcollection:
+//   projects/{projectId}              → metadata (title, pathMap, dates, customName)
+//   projects/{projectId}/pages/{pageId}  → one page's HTML content
+//
+// This keeps each document well under 1MB.
+
+const FIRESTORE_WRITE_TIMEOUT_MS = 20000;  // 20s hard timeout for Firestore writes
+
+// Write a multi-page project using the subcollection structure.
+// Each page goes into its own doc; the parent doc holds metadata + pathMap.
+// Includes a timeout wrapper so a hung write doesn't block forever.
+async function writeProjectWithPages(db, projectId, metadata, files, pathMap) {
+  const totalBytes = JSON.stringify(files).length;
+  console.log("[project-storage] Writing project", projectId, "with", Object.keys(files).length, "pages, total", totalBytes, "bytes");
+
+  // Race the write against a timeout
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error("STORAGE_TIMEOUT")), FIRESTORE_WRITE_TIMEOUT_MS);
+  });
+
+  const writePromise = (async () => {
+    // 1. Write the parent metadata doc (small — just pathMap + metadata)
+    const pathMapJson = JSON.stringify(pathMap);
+    console.log("[project-storage] Parent doc pathMap size:", pathMapJson.length, "bytes");
+    await setDoc(doc(db, "projects", projectId), {
+      id: projectId,
+      title: metadata.title || "Untitled",
+      browserId: metadata.browserId || "anonymous",
+      ownerUid: metadata.ownerUid || null,
+      createdAt: metadata.createdAt || Date.now(),
+      expiresAt: metadata.expiresAt || null,
+      customName: metadata.customName || null,
+      pathMapJson,
+      clonedFrom: metadata.clonedFrom || null,
+      storageFormat: "subcollection",  // flag for backwards compat
+    });
+    console.log("[project-storage] Parent doc written OK");
+
+    // 2. Write each page as a separate doc in the pages subcollection
+    const pageIds = {};  // filePath → pageId (for the response)
+    for (const filePath of Object.keys(files)) {
+      const content = files[filePath];
+      const pageId = filePath.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) + "_" + Math.random().toString(36).slice(2, 6);
+      console.log("[project-storage] Writing page:", filePath, "->", pageId, "(" + content.length + " bytes)");
+
+      // Check if this single page exceeds 900KB (leaves room for the doc metadata)
+      if (content.length > 900000) {
+        console.warn("[project-storage] Page", filePath, "is", content.length, "bytes — may exceed Firestore 1MB limit");
+      }
+
+      await setDoc(doc(db, "projects", projectId, "pages", pageId), {
+        id: pageId,
+        filePath,
+        content,
+        createdAt: Date.now(),
+      });
+      pageIds[filePath] = pageId;
+      console.log("[project-storage] Page written OK:", filePath);
+    }
+
+    console.log("[project-storage] All pages written. Project", projectId, "complete.");
+    return pageIds;
+  })();
+
+  const result = await Promise.race([writePromise, timeoutPromise]);
+  return result;
+}
+
+// Read a multi-page project from the subcollection structure.
+// Returns { files, pathMap, metadata } or falls back to old flat format.
+async function readProjectWithPages(db, projectId) {
+  // 1. Read the parent metadata doc
+  const parentSnap = await getDoc(doc(db, "projects", projectId));
+  if (!parentSnap.exists()) return null;
+  const parentData = parentSnap.data();
+
+  // Parse pathMap
+  let pathMap = {};
+  if (parentData.pathMapJson) {
+    try { pathMap = JSON.parse(parentData.pathMapJson); } catch (e) { pathMap = {}; }
+  } else if (parentData.pathMap) {
+    pathMap = parentData.pathMap;  // backwards compat
+  }
+
+  // 2. Check storage format
+  if (parentData.storageFormat === "subcollection" || !parentData.filesJson) {
+    // New subcollection format — read each page from the pages subcollection
+    console.log("[project-storage] Reading project", projectId, "from subcollection");
+    const pagesSnap = await getDocs(collection(db, "projects", projectId, "pages"));
+    const files = {};
+    pagesSnap.forEach((pageDoc) => {
+      const pageData = pageDoc.data();
+      if (pageData.filePath && pageData.content) {
+        files[pageData.filePath] = pageData.content;
+      }
+    });
+    console.log("[project-storage] Read", Object.keys(files).length, "pages from subcollection");
+    return { files, pathMap, metadata: parentData };
+  }
+
+  // 3. Backwards compat: old flat format (filesJson in the parent doc)
+  console.log("[project-storage] Reading project", projectId, "from old flat format");
+  const { files, pathMap: oldPathMap } = deserializeProjectFiles(parentData);
+  return { files, pathMap: Object.keys(pathMap).length > 0 ? pathMap : oldPathMap, metadata: parentData };
+}
+
 // ===== Custom name (slug) support =====
 // Reserved words that can't be used as custom names (would collide with app routes)
 const RESERVED_SLUGS = new Set([
@@ -700,25 +811,28 @@ async function handleCloneMulti(req, res) {
   }
 
   // === Store as a multi-page project in Firestore ===
+  // Uses subcollection storage: parent doc holds metadata + pathMap,
+  // each page goes into its own doc under projects/{projectId}/pages/{pageId}
+  // to avoid the 1MB per-document limit.
   sendEvent("progress", { message: "Storing " + Object.keys(files).length + " pages as a project…", page: totalPages, total: totalPages });
   try {
     const projectId = Math.random().toString(36).slice(2, 8);
     const now = Date.now();
     const db = getDb();
     const pathMap = multipage.buildPathMap(files);
-    // Sanitize for Firestore: store as JSON strings to avoid dot-notation issues
-    const { filesJson, pathMapJson } = sanitizeProjectForFirestore(files, pathMap);
-    await setDoc(doc(db, "projects", projectId), {
-      id: projectId,
+    console.log("[clone-multi] Crawl complete. Writing", Object.keys(files).length, "pages to Firestore project", projectId);
+    console.log("[clone-multi] Total content size:", JSON.stringify(files).length, "bytes");
+
+    await writeProjectWithPages(db, projectId, {
       title: "Cloned from " + hostname,
       browserId: browserId || "anonymous",
       ownerUid: uid || null,
       createdAt: now,
       expiresAt: null,
-      filesJson,
-      pathMapJson,
       clonedFrom: finalUrl,
-    });
+    }, files, pathMap);
+
+    console.log("[clone-multi] Storage complete for project", projectId);
     const baseUrl = "https://" + req.headers.host;
     const projectUrl = baseUrl + "/p/" + projectId;
     sendEvent("done", {
@@ -732,9 +846,17 @@ async function handleCloneMulti(req, res) {
     });
   } catch (err) {
     // Log the FULL technical error server-side for debugging
-    console.error("[clone-multi] Storage failed:", err);
-    // Show a friendly, non-technical message to the user
-    sendEvent("error", { error: "Something went wrong saving your cloned site. Please try again." });
+    console.error("[clone-multi] Storage failed:", err.message || err);
+    // Return a specific, user-friendly error based on the failure type
+    if (err.message === "STORAGE_TIMEOUT") {
+      sendEvent("error", { error: "Saving took too long. Please try again with fewer pages or a smaller site." });
+    } else if (err.message && err.message.includes("INVALID_ARGUMENT")) {
+      sendEvent("error", { error: "This site is too large to clone. Try a simpler page or fewer linked pages." });
+    } else if (err.message && err.message.includes("RESOURCE_EXHAUSTED")) {
+      sendEvent("error", { error: "Storage quota exceeded. Please try again later." });
+    } else {
+      sendEvent("error", { error: "Something went wrong saving your cloned site. Please try again." });
+    }
   }
   return res.end();
 }
@@ -1122,10 +1244,6 @@ async function handleMultiDeploy(req, res) {
     // Build the path map
     const pathMap = multipage.buildPathMap(files);
 
-    // Sanitize for Firestore: store as JSON strings to avoid dot-notation issues
-    // with keys like "css/style.css" (Firestore interprets dots as nested field paths)
-    const { filesJson, pathMapJson } = sanitizeProjectForFirestore(files, pathMap);
-
     // Generate ID and compute expiry
     const id = Math.random().toString(36).slice(2, 8);
     const now = Date.now();
@@ -1134,17 +1252,16 @@ async function handleMultiDeploy(req, res) {
     else if (ttl === "7d") expiresAt = now + 604800000;
     else if (ttl === "30d") expiresAt = now + 2592000000;
 
+    // Use subcollection storage to avoid 1MB Firestore document limit
     const db = getDb();
-    await setDoc(doc(db, "projects", id), {
-      id,
+    console.log("[multi-deploy] Writing project", id, "with", Object.keys(files).length, "pages, total", JSON.stringify(files).length, "bytes");
+    await writeProjectWithPages(db, id, {
       title: title || "Untitled",
       browserId: browserId || "anonymous",
       createdAt: now,
       expiresAt,
-      filesJson,
-      pathMapJson,
       customName: normalizedCustomName,
-    });
+    }, files, pathMap);
 
     const baseUrl = `https://${req.headers.host}`;
     // For multi-page with custom name, the URL is /<custom-name> (which resolves to the project's index)
@@ -1191,17 +1308,16 @@ async function handleMultiServe(req, res) {
     }
 
     const db = getDb();
-    const snap = await getDoc(doc(db, "projects", id));
-    if (!snap.exists()) {
+    // Read from subcollection structure (with backwards compat for old flat format)
+    const projectData = await readProjectWithPages(db, id);
+    if (!projectData) {
       return res.status(404).send(renderSiteError("Not found", "This project doesn't exist or has been deleted."));
     }
-    const data = snap.data();
-    if (data.expiresAt && Date.now() > data.expiresAt) {
-      return res.status(410).send(renderSiteExpired(data.title || "Untitled"));
+    const { files, pathMap, metadata } = projectData;
+    if (metadata.expiresAt && Date.now() > metadata.expiresAt) {
+      return res.status(410).send(renderSiteExpired(metadata.title || "Untitled"));
     }
 
-    // Deserialize files + pathMap (supports new JSON-string format + old native-map format)
-    const { files, pathMap } = deserializeProjectFiles(data);
     const filePath = multipage.resolvePath(path, pathMap);
     if (!filePath) {
       return res.status(404).send(renderSiteError("Not found", "The page '" + path + "' doesn't exist in this project."));
@@ -1216,7 +1332,7 @@ async function handleMultiServe(req, res) {
     let output = content;
     if (mime === "text/html; charset=utf-8") {
       const projectUrl = `https://${req.headers.host}/p/${id}`;
-      output = injectOgMeta(content, data.title || "Untitled", projectUrl);
+      output = injectOgMeta(content, metadata.title || "Untitled", projectUrl);
     }
 
     res.setHeader("Content-Type", mime);
@@ -1491,20 +1607,24 @@ async function handleSiteResolve(req, res) {
     const projectQuery = query(collection(db, "projects"), where("customName", "==", slug));
     const projectSnap = await getDocs(projectQuery);
     if (!projectSnap.empty) {
-      const projectData = projectSnap.docs[0].data();
-      if (projectData.expiresAt && Date.now() > projectData.expiresAt) {
-        return res.status(410).send(renderSiteExpired(projectData.title || "Untitled"));
-      }
-      // Serve the project's index.html (first file or "index.html")
-      const { files, pathMap } = deserializeProjectFiles(projectData);
-      const indexPath = pathMap["/"] || "index.html";
-      const content = files[indexPath];
-      if (content) {
-        const projectUrl = `https://${req.headers.host}/${slug}`;
-        const htmlWithOg = injectOgMeta(content, projectData.title || "Untitled", projectUrl);
-        res.setHeader("Content-Type", "text/html; charset=utf-8");
-        res.setHeader("X-Content-Type-Options", "nosniff");
-        return res.status(200).send(htmlWithOg);
+      const projectDoc = projectSnap.docs[0];
+      const projectId = projectDoc.id;
+      // Read from subcollection (with backwards compat)
+      const projectData = await readProjectWithPages(db, projectId);
+      if (projectData) {
+        const { files, pathMap, metadata } = projectData;
+        if (metadata.expiresAt && Date.now() > metadata.expiresAt) {
+          return res.status(410).send(renderSiteExpired(metadata.title || "Untitled"));
+        }
+        const indexPath = pathMap["/"] || "index.html";
+        const content = files[indexPath];
+        if (content) {
+          const projectUrl = `https://${req.headers.host}/${slug}`;
+          const htmlWithOg = injectOgMeta(content, metadata.title || "Untitled", projectUrl);
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.setHeader("X-Content-Type-Options", "nosniff");
+          return res.status(200).send(htmlWithOg);
+        }
       }
     }
 
