@@ -44,6 +44,9 @@
     { "source": "/site/:id", "destination": "/api/main?route=site&id=:id" },
     { "source": "/api/multi-deploy", "destination": "/api/main?route=multi-deploy" },
     { "source": "/api/og-image", "destination": "/api/main?route=og-image" },
+    { "source": "/api/check-slug", "destination": "/api/main?route=check-slug" },
+    { "source": "/api/site-resolve", "destination": "/api/main?route=site-resolve" },
+    { "source": "/api/site-update-name", "destination": "/api/main?route=site-update-name" },
     { "source": "/api/api-token-create", "destination": "/api/main?route=api-token-create" },
     { "source": "/api/api-token-list", "destination": "/api/main?route=api-token-list" },
     { "source": "/api/api-token-delete", "destination": "/api/main?route=api-token-delete" },
@@ -59,6 +62,7 @@
     { "source": "/api/ai-edit", "destination": "/api/ai-edit.js" },
     { "source": "/__/auth/:catch*", "destination": "/index.html" },
     { "source": "/admin", "destination": "/index.html" },
+    { "source": "/:slug([a-z0-9][a-z0-9-]{1,28}[a-z0-9])", "destination": "/api/main?route=site-resolve&slug=:slug" },
     { "source": "/((?!api|site|p|_next|sw.js|manifest.json|icon|favicon|apple|robots|svarna-template|__).*)", "destination": "/index.html" }
   ]
 }

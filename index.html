@@ -594,7 +594,7 @@
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); showCloneModal()">Clone from URL</button>
       </div>
       <input type="file" id="file-input" accept=".html,.htm,.zip,image/*" />
-      <input type="file" id="folder-input" webkitdirectory multiple style="display:none" />
+      <input type="file" id="folder-input" webkitdirectory multiple style="position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0;" />
     </section>
 
     <!-- Clone from URL modal -->
@@ -707,6 +707,14 @@
           <div class="editor-field">
             <label>Page title</label>
             <input class="input" id="title-input" placeholder="My page" value="Untitled" />
+          </div>
+          <div class="editor-field">
+            <label>Custom link (optional) — <span style="font-weight:400;color:var(--fg-muted);">leave blank for a random ID</span></label>
+            <div style="display:flex;align-items:center;gap:0;">
+              <span style="padding:0 8px;background:var(--bg-elevated);border:1px solid var(--border);border-right:none;border-radius:6px 0 0 6px;font-size:13px;color:var(--fg-muted);white-space:nowrap;line-height:34px;">kayhosthtml.zone.id/</span>
+              <input class="input" id="custom-name-input" placeholder="akaytech" style="border-radius:0 6px 6px 0;flex:1;" maxlength="30" oninput="onCustomNameInput()" />
+            </div>
+            <div id="custom-name-feedback" style="font-size:11px;margin-top:4px;color:var(--fg-muted);">Lowercase letters, numbers, hyphens. 3–30 chars. No leading/trailing hyphens.</div>
           </div>
         </div>
         <div style="display:flex;gap:8px;margin-top:16px;align-items:stretch;">
@@ -1756,9 +1764,6 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
     // --- Deploy ---
     document.getElementById("deploy-btn").addEventListener("click", async () => {
       // --- Phase 1: Multi-page detection ---
-      // If the editor has 2+ HTML files in _files, deploy as a multi-page project
-      // (each HTML file gets its own clean URL: about.html -> /about, etc.).
-      // Otherwise, fall through to the existing single-file deploy (unchanged).
       const hasMultipleHtml = (typeof _files !== "undefined" && _files.length > 1 &&
         _files.filter(f => f.name.endsWith(".html") || f.name.endsWith(".htm")).length >= 2);
 
@@ -1766,15 +1771,26 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
       const btn = document.getElementById("deploy-btn");
       btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Deploying...';
 
+      // --- Custom name validation (if provided) ---
+      const customNameRaw = (document.getElementById("custom-name-input").value || "").trim();
+      let customName = null;
+      if (customNameRaw) {
+        const validation = validateCustomName(customNameRaw);
+        if (!validation.ok) {
+          toast(validation.error, "error");
+          btn.disabled = false; btn.textContent = "Deploy";
+          return;
+        }
+        customName = customNameRaw.toLowerCase();
+      }
+
       try {
         let url;
         if (hasMultipleHtml) {
           // --- Multi-page deploy (Phase 1) ---
-          // Sync the active file's content into _files before sending
           if (_activeFileIndex >= 0) {
             _files[_activeFileIndex].content = document.getElementById("html-input").value;
           }
-          // Build the files object: { "index.html": "...", "about.html": "...", "css/style.css": "..." }
           const filesObj = {};
           for (const f of _files) {
             filesObj[f.name] = f.content || "";
@@ -1782,33 +1798,88 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
           const res = await fetch("/api/multi-deploy", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ files: filesObj, title, ttl: currentTtl, browserId: getBrowserId() }),
+            body: JSON.stringify({ files: filesObj, title, ttl: currentTtl, browserId: getBrowserId(), customName }),
           });
           if (!res.ok) throw new Error((await res.json()).error || "Multi-page deploy failed");
           const data = await res.json();
           url = data.url;
         } else {
-          // --- Single-file deploy (unchanged from before) ---
+          // --- Single-file deploy (with optional custom name) ---
           const html = (typeof _files !== "undefined" && _files.length > 1)
             ? mergeFilesToHtml().trim()
             : document.getElementById("html-input").value.trim();
           if (!html) { toast("Paste some HTML first", "error"); return; }
-          const res = await fetch("/api/deploy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ html, title, ttl: currentTtl, browserId: getBrowserId() }) });
+          const res = await fetch("/api/deploy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ html, title, ttl: currentTtl, browserId: getBrowserId(), customName }) });
           if (!res.ok) throw new Error((await res.json()).error || "Deploy failed");
-          ({ url } = await res.json());
+          const data = await res.json();
+          url = data.url;
         }
 
         const result = document.getElementById("deploy-result");
         result.classList.remove("empty");
         result.innerHTML = '<div class="link-box"><span>' + escapeHtml(url) + '</span><button class="copy-btn" onclick="navigator.clipboard.writeText(\'' + escapeHtml(url) + '\').then(() => toast(\'Copied\', \'success\'))">Copy</button></div><a class="btn btn-purple btn-block" href="' + escapeHtml(url) + '" target="_blank" rel="noopener" style="margin-top: 8px;">Open live page</a>';
-        // The bold moment: animate the reveal
         result.classList.remove("revealed");
-        void result.offsetWidth; // force reflow
+        void result.offsetWidth;
         result.classList.add("revealed");
         toast(hasMultipleHtml ? "Multi-page site deployed. Your link is live." : "Deployed. Your link is live.", "success");
       } catch (err) { toast(err.message, "error"); }
       finally { btn.disabled = false; btn.textContent = "Deploy"; }
     });
+
+    // ===== Custom name (slug) validation + availability check =====
+    // Client-side validation. The server re-validates and checks uniqueness.
+    function validateCustomName(name) {
+      if (!name) return { ok: true };  // empty = use random ID
+      if (name.length < 3) return { ok: false, error: "Custom name must be at least 3 characters." };
+      if (name.length > 30) return { ok: false, error: "Custom name must be 30 characters or fewer." };
+      if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(name)) {
+        return { ok: false, error: "Custom name can only contain lowercase letters, numbers, and hyphens. No leading or trailing hyphens." };
+      }
+      return { ok: true };
+    }
+
+    // Debounced availability check as the user types
+    let _customNameCheckTimer = null;
+    async function onCustomNameInput() {
+      const input = document.getElementById("custom-name-input");
+      const feedback = document.getElementById("custom-name-feedback");
+      if (!input || !feedback) return;
+      const name = input.value.trim().toLowerCase();
+      input.value = name;  // force lowercase display
+
+      if (!name) {
+        feedback.textContent = "Lowercase letters, numbers, hyphens. 3–30 chars. No leading/trailing hyphens.";
+        feedback.style.color = "var(--fg-muted)";
+        return;
+      }
+      const validation = validateCustomName(name);
+      if (!validation.ok) {
+        feedback.textContent = validation.error;
+        feedback.style.color = "#ef4444";
+        return;
+      }
+      // Show "checking..." then debounce the API call
+      feedback.textContent = "Checking availability…";
+      feedback.style.color = "var(--fg-muted)";
+      if (_customNameCheckTimer) clearTimeout(_customNameCheckTimer);
+      _customNameCheckTimer = setTimeout(async () => {
+        try {
+          const res = await fetch("/api/check-slug?slug=" + encodeURIComponent(name));
+          const data = await res.json();
+          if (data.available) {
+            feedback.textContent = "✓ \"" + name + "\" is available";
+            feedback.style.color = "#10b981";
+          } else {
+            feedback.textContent = data.error || ("\"" + name + "\" is not available.");
+            feedback.style.color = "#ef4444";
+          }
+        } catch (e) {
+          feedback.textContent = "Couldn't check availability — try deploying anyway.";
+          feedback.style.color = "var(--fg-muted)";
+        }
+      }, 400);
+    }
+    window.onCustomNameInput = onCustomNameInput;
 
     // --- File handling ---
     async function handleFile(file) {
@@ -1840,7 +1911,8 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
           };
           reader.readAsDataURL(file);
         } else if (file.name.endsWith(".zip")) {
-          toast("ZIP upload coming soon", "error");
+          // Phase: ZIP upload — unzip client-side with JSZip, build file-tree, deploy as multi-page
+          await uploadZipAndDeploy(file);
         }
       } catch (err) { toast(err.message, "error"); }
     }
@@ -3029,12 +3101,40 @@ Return ONLY the raw HTML:`;
           item.className = "site-item";
           const initials = (s.title || "U").slice(0, 2).toUpperCase();
           const expiry = s.expiresAt ? formatExpiry(s.expiresAt) : "Never expires";
-          const url = location.origin + "/site/" + s.id;
-          item.innerHTML = '<div class="thumb">' + escapeHtml(initials) + '</div><div class="info"><div class="title">' + escapeHtml(s.title || "Untitled") + '</div><div class="meta">' + escapeHtml(expiry) + " · " + new Date(s.createdAt).toLocaleDateString() + '</div></div><div class="actions"><a href="' + escapeHtml(url) + '" target="_blank">open</a><button onclick="navigator.clipboard.writeText(\'' + escapeHtml(url) + '\').then(() => toast(\'Copied\', \'success\'))">copy</button></div>';
+          // Use custom-name URL if set, otherwise the random-ID URL
+          const url = s.customName ? (location.origin + "/" + s.customName) : (location.origin + "/site/" + s.id);
+          const customNameBadge = s.customName ? ' <span style="font-size:9px;background:var(--purple);color:#fff;padding:1px 5px;border-radius:3px;margin-left:4px;">/' + escapeHtml(s.customName) + '</span>' : "";
+          item.innerHTML = '<div class="thumb">' + escapeHtml(initials) + '</div><div class="info"><div class="title">' + escapeHtml(s.title || "Untitled") + customNameBadge + '</div><div class="meta">' + escapeHtml(expiry) + " · " + new Date(s.createdAt).toLocaleDateString() + '</div></div><div class="actions"><a href="' + escapeHtml(url) + '" target="_blank">open</a><button onclick="navigator.clipboard.writeText(\'' + escapeHtml(url) + '\').then(() => toast(\'Copied\', \'success\'))">copy</button><button onclick="editSiteCustomName(\'' + escapeHtml(s.id) + '\', ' + (s.customName ? "'" + escapeHtml(s.customName) + "'" : "null") + ')">edit name</button></div>';
           list.appendChild(item);
         });
       } catch (err) { list.innerHTML = '<div class="empty-state"><h3>Couldn\'t load</h3><p>' + escapeHtml(err.message) + "</p></div>"; }
     }
+
+    // Edit a site's custom name (or add/remove it) — prompts the user
+    window.editSiteCustomName = async function(siteId, currentName) {
+      const newName = prompt(
+        "Custom link name (lowercase letters, numbers, hyphens; 3–30 chars).\nLeave blank to remove the custom name and use the random ID.",
+        currentName || ""
+      );
+      if (newName === null) return;  // user cancelled
+      const trimmed = newName.trim().toLowerCase();
+      // Validate client-side
+      if (trimmed) {
+        const validation = validateCustomName(trimmed);
+        if (!validation.ok) { toast(validation.error, "error"); return; }
+      }
+      try {
+        const res = await fetch("/api/site-update-name", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: siteId, customName: trimmed || null, browserId: getBrowserId() }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Update failed");
+        toast(trimmed ? "Custom name set to /" + trimmed : "Custom name removed", "success");
+        loadSites();  // refresh the list
+      } catch (err) { toast(err.message, "error"); }
+    };
     function formatExpiry(t) { const r = t - Date.now(); if (r <= 0) return "Expired"; const d = Math.floor(r / 86400000), h = Math.floor((r % 86400000) / 3600000); if (d > 0) return d + "d " + h + "h left"; if (h > 0) return h + "h left"; return "Expires soon"; }
 
     // --- Keyboard: Ctrl+V paste ---
@@ -3052,121 +3152,147 @@ Return ONLY the raw HTML:`;
     // --- Folder upload (multi-page) ---
     document.getElementById("folder-input").addEventListener("change", async (e) => {
       const files = Array.from(e.target.files);
-      if (!files.length) return;
-      // Find the main HTML file (index.html preferred)
-      const htmlFile = files.find(f => f.name === "index.html") || files.find(f => f.name.endsWith(".html") || f.name.endsWith(".htm"));
-      if (!htmlFile) { toast("No HTML file found in the folder", "error"); return; }
-      toast("Loading folder (" + files.length + " files)...", "info");
-      try {
-        let html = await htmlFile.text();
-        // For multi-page: collect all HTML files and embed them as data URIs
-        const otherHtml = files.filter(f => f !== htmlFile && (f.name.endsWith(".html") || f.name.endsWith(".htm")));
-        // Upload any images to Cloudinary and replace src
-        const images = files.filter(f => f.type.startsWith("image/"));
-        for (const img of images) {
-          try {
-            const reader = new FileReader();
-            const dataUrl = await new Promise((res, rej) => { reader.onload = () => res(reader.result); reader.onerror = rej; reader.readAsDataURL(img); });
-            // Try uploading to Cloudinary
-            try {
-              const upRes = await fetch("/api/media", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: dataUrl, filename: img.name, mimeType: img.type }) });
-              if (upRes.ok) {
-                const { url } = await upRes.json();
-                // Replace relative image paths with the Cloudinary URL
-                const imgPath = img.webkitRelativePath || img.name;
-                html = html.replace(new RegExp('src=["\']' + imgPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '["\']', 'g'), 'src="' + url + '"');
-              }
-            } catch (e) { /* Cloudinary not set up — keep data URL fallback */ }
-          } catch (e) {}
-        }
-        // CSS files: inline them into the HTML (single-file mode)
-        // JS files: inline them into the HTML (single-file mode)
-        // (In multi-file mode below, we keep each file in its own tab instead
-        // of inlining — so the user can edit them separately.)
-        const cssFilesAll = files.filter(f => f.name.endsWith(".css"));
-        const jsFilesAll = files.filter(f => f.name.endsWith(".js"));
-        // Phase 1: also collect ALL HTML files (not just the first one) so multi-page
-        // deploy can kick in. Each HTML file becomes its own tab + its own URL.
-        const allHtmlFiles = files.filter(f => f.name.endsWith(".html") || f.name.endsWith(".htm"));
-        // Multi-file mode now triggers if there are CSS/JS files OR 2+ HTML files
-        const useMultiFileMode = (cssFilesAll.length + jsFilesAll.length) > 0 || allHtmlFiles.length >= 2;
-
-        if (!useMultiFileMode) {
-          // Single-file mode: inline everything into one HTML blob (original behavior)
-          for (const css of cssFilesAll) {
-            const cssText = await css.text();
-            const cssPath = css.webkitRelativePath || css.name;
-            html = html.replace(new RegExp('<link[^>]*href=["\']' + cssPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '["\'][^>]*>', 'g'), '<style>\n' + cssText + '\n</style>');
-          }
-          for (const js of jsFilesAll) {
-            const jsText = await js.text();
-            const jsPath = js.webkitRelativePath || js.name;
-            html = html.replace(new RegExp('<script[^>]*src=["\']' + jsPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '["\'][^>]*><\\/script>', 'g'), '<script>\n' + jsText + '\n<\/script>');
-          }
-          document.getElementById("html-input").value = html;
-          currentHtml = html;
-          showEditor();
-          saveDraft(currentHtml);
-          toast("Folder loaded (" + files.length + " files merged)", "success");
-        } else {
-          // Multi-file mode: each file becomes its own tab (htmlhost.co style)
-          // Phase 1: include ALL HTML files (preserving folder structure via webkitRelativePath)
-          // so multi-page deploy can map each one to a clean URL.
-          _files = [];
-          for (const hf of allHtmlFiles) {
-            // Use webkitRelativePath if available (preserves "blog/post-1.html"),
-            // otherwise fall back to just the filename.
-            const path = hf.webkitRelativePath || hf.name;
-            // Strip any leading folder name from webkitRelativePath if it's just the
-            // folder name itself (e.g. "my-site/index.html" -> "index.html").
-            // We want to preserve subfolder structure (e.g. "blog/post.html") but
-            // drop the top-level uploaded-folder name.
-            let cleanPath = path;
-            const slashIdx = path.indexOf("/");
-            if (slashIdx > 0 && !path.startsWith("/")) {
-              // Check if the first segment is the uploaded folder name (heuristic:
-              // if there's only one slash, drop the first segment; if multiple, keep them)
-              const segments = path.split("/");
-              if (segments.length === 2) {
-                // "my-site/index.html" -> "index.html"
-                cleanPath = segments[1];
-              } else if (segments.length > 2) {
-                // "my-site/blog/post.html" -> "blog/post.html"
-                cleanPath = segments.slice(1).join("/");
-              }
-            }
-            _files.push({ name: cleanPath, content: await hf.text() });
-          }
-          for (const css of cssFilesAll) {
-            const path = css.webkitRelativePath || css.name;
-            let cleanPath = path;
-            const segments = path.split("/");
-            if (segments.length >= 2) cleanPath = segments.slice(1).join("/");
-            _files.push({ name: cleanPath, content: await css.text() });
-          }
-          for (const js of jsFilesAll) {
-            const path = js.webkitRelativePath || js.name;
-            let cleanPath = path;
-            const segments = path.split("/");
-            if (segments.length >= 2) cleanPath = segments.slice(1).join("/");
-            _files.push({ name: cleanPath, content: await js.text() });
-          }
-          // Make sure the primary HTML file (index.html if present, else first) is first in the list
-          const idxIdx = _files.findIndex(f => f.name === "index.html" || f.name.endsWith("/index.html"));
-          if (idxIdx > 0) {
-            const [idxFile] = _files.splice(idxIdx, 1);
-            _files.unshift(idxFile);
-          }
-          _activeFileIndex = 0;
-          document.getElementById("html-input").value = _files[0].content || "";
-          currentHtml = _files[0].content || "";
-          renderFileTabs();
-          showEditor();
-          saveDraft(currentHtml);
-          toast("Folder loaded — " + _files.length + " files in tabs (multi-page ready)", "success");
-        }
-      } catch (err) { toast(err.message, "error"); }
+      if (!files.length) { toast("No files selected", "error"); return; }
+      e.target.value = "";  // reset so the same folder can be re-selected later
+      await uploadFolderAndDeploy(files);
     });
+
+    // ===== Folder + Zip upload → auto-deploy as multi-page project =====
+    // Both paths build the same { "index.html": "...", "about.html": "...", "css/style.css": "..." }
+    // object and POST it to /api/multi-deploy (the Phase 1 backend). After deploy,
+    // redirect the user to their new /p/<projectId> link.
+
+    // Strip the top-level uploaded-folder name from a webkitRelativePath.
+    //   "my-site/index.html"        -> "index.html"
+    //   "my-site/blog/post.html"    -> "blog/post.html"
+    //   "my-site/css/style.css"     -> "css/style.css"
+    //   "index.html" (no folder)    -> "index.html"
+    function stripTopLevelFolder(relPath) {
+      if (!relPath) return relPath;
+      const segments = relPath.split("/");
+      if (segments.length >= 2) return segments.slice(1).join("/");
+      return relPath;
+    }
+
+    // Build a file-tree object from an array of File objects (from folder upload).
+    // Only includes text-based files (HTML, CSS, JS, JSON, SVG, TXT). Binary files
+    // (images, fonts, etc.) are skipped — they should be uploaded to Cloudinary
+    // separately and referenced by URL.
+    async function buildFileTreeFromFiles(fileList) {
+      const files = Array.from(fileList);
+      const allowed = [".html", ".htm", ".css", ".js", ".mjs", ".json", ".svg", ".txt", ".xml"];
+      const textFiles = files.filter(f => {
+        const name = (f.name || "").toLowerCase();
+        return allowed.some(ext => name.endsWith(ext));
+      });
+      const tree = {};
+      let totalSize = 0;
+      for (const f of textFiles) {
+        const relPath = f.webkitRelativePath || f.name;
+        const cleanPath = stripTopLevelFolder(relPath);
+        if (!cleanPath || cleanPath.includes("..")) continue;
+        const content = await f.text();
+        tree[cleanPath] = content;
+        totalSize += content.length;
+      }
+      return { tree, totalSize, fileCount: Object.keys(tree).length };
+    }
+
+    // Validate a file-tree object before deploying.
+    // Returns { ok: true } or { ok: false, error: "..." }.
+    function validateFileTree(tree, totalSize) {
+      const keys = Object.keys(tree);
+      if (keys.length === 0) return { ok: false, error: "No supported files found. Include at least one .html file." };
+      const hasHtml = keys.some(k => k.endsWith(".html") || k.endsWith(".htm"));
+      if (!hasHtml) return { ok: false, error: "No .html file found in the upload. Include at least one HTML file." };
+      if (totalSize > 10 * 1024 * 1024) return { ok: false, error: "Upload exceeds 10MB limit. Remove large files and try again." };
+      return { ok: true };
+    }
+
+    // Deploy a file-tree object as a multi-page project and redirect.
+    async function deployFileTree(tree, title) {
+      const u = window.currentUser || null;
+      const uid = u ? u.uid : null;
+      const res = await fetch("/api/multi-deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          files: tree,
+          title: title || "Uploaded site",
+          ttl: currentTtl || "7d",
+          browserId: getBrowserId(),
+          uid,
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Deploy failed (HTTP " + res.status + ")");
+      }
+      const data = await res.json();
+      return data;  // { id, url, expiresAt, multiPage }
+    }
+
+    // Folder upload: read all files → build tree → validate → deploy → redirect
+    async function uploadFolderAndDeploy(fileList) {
+      toast("Reading folder (" + fileList.length + " files)...", "info");
+      try {
+        const { tree, totalSize, fileCount } = await buildFileTreeFromFiles(fileList);
+        const validation = validateFileTree(tree, totalSize);
+        if (!validation.ok) { toast(validation.error, "error"); return; }
+
+        toast("Deploying " + fileCount + " files...", "info");
+        const data = await deployFileTree(tree, "Folder upload");
+        toast("Deployed! " + fileCount + " pages are live.", "success");
+        // Redirect to the new multi-page site
+        window.open(data.url, "_blank");
+        // Also switch to the sites view so the user sees it in their list
+        switchView("sites");
+      } catch (err) {
+        toast(err.message || "Folder upload failed", "error");
+      }
+    }
+    window.uploadFolderAndDeploy = uploadFolderAndDeploy;
+
+    // ZIP upload: unzip with JSZip → build tree → validate → deploy → redirect
+    async function uploadZipAndDeploy(zipFile) {
+      if (typeof JSZip === "undefined") {
+        toast("ZIP library failed to load. Refresh the page and try again.", "error");
+        return;
+      }
+      toast("Unzipping " + zipFile.name + "...", "info");
+      try {
+        const zip = await JSZip.loadAsync(zipFile);
+        const tree = {};
+        let totalSize = 0;
+        const allowed = [".html", ".htm", ".css", ".js", ".mjs", ".json", ".svg", ".txt", ".xml"];
+        const entries = Object.values(zip.files).filter(e => !e.dir);
+        for (const entry of entries) {
+          const name = (entry.name || "").toLowerCase();
+          // Skip macOS metadata files
+          if (name.startsWith("__macosx/") || name.endsWith(".ds_store")) continue;
+          if (!allowed.some(ext => name.endsWith(ext))) continue;
+          if (entry.name.includes("..")) continue;
+          const content = await entry.async("string");
+          tree[entry.name] = content;
+          totalSize += content.length;
+        }
+        const validation = validateFileTree(tree, totalSize);
+        if (!validation.ok) { toast(validation.error, "error"); return; }
+
+        toast("Deploying " + Object.keys(tree).length + " files...", "info");
+        const data = await deployFileTree(tree, "ZIP upload");
+        toast("Deployed! " + Object.keys(tree).length + " pages are live.", "success");
+        window.open(data.url, "_blank");
+        switchView("sites");
+      } catch (err) {
+        if (err.message && err.message.includes("not a valid zip")) {
+          toast("That file is not a valid ZIP archive.", "error");
+        } else {
+          toast(err.message || "ZIP upload failed", "error");
+        }
+      }
+    }
+    window.uploadZipAndDeploy = uploadZipAndDeploy;
 
     // --- Clone from URL ---
     // Gated behind Pro — non-Pro users see the upgrade modal instead of the clone form.
@@ -4728,6 +4854,7 @@ Return ONLY the raw HTML:`;
 
   <!-- ===== Paystack inline checkout script (safe to load — public key only) ===== -->
   <script src="https://js.paystack.co/v1/inline.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
   <!-- ===== Paystack payment flow for Pro upgrade ===== -->
   <script>
