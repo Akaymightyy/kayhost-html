@@ -275,7 +275,7 @@ async function handleDeploy(req, res) {
   try {
     const { html, title, ttl, browserId, customName } = req.body || {};
     if (!html || typeof html !== "string") return res.status(400).json({ error: "HTML content required" });
-    if (html.length > 500_000) return res.status(413).json({ error: "HTML too large (max 500KB)" });
+    if (html.length > 2_000_000) return res.status(413).json({ error: "HTML too large (max 2MB)" });
     const id = Math.random().toString(36).slice(2, 8);
     const now = Date.now();
     let expiresAt = null;
@@ -452,8 +452,13 @@ function escapeAttr(s) {
 
 async function handleClone(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-  const { url } = req.body || {};
+  let { url } = req.body || {};
   if (!url) return res.status(400).json({ error: "URL required" });
+  // Auto-prefix bare domains with https:// (e.g. "example.com" → "https://example.com")
+  url = url.trim();
+  if (!/^https?:\/\//i.test(url)) {
+    url = "https://" + url;
+  }
   let parsedUrl;
   try { parsedUrl = new URL(url); } catch (e) {
     return res.status(400).json({ error: "Invalid URL. Must start with http:// or https://" });
@@ -569,18 +574,29 @@ async function handleClone(req, res) {
   // overall response time will be 9s max (1s over the original 8s, but well under
   // the 60s Vercel function max).
   let inlinedCount = 0, skippedCount = 0, timedOut = false;
+  let assetStats = null;
   try {
     const result = await cloneHelpers.inlineAssets(html, finalUrl, cloneHelpers.MAX_TOTAL_INLINE_MS);
     html = result.html;
     inlinedCount = result.inlinedCount;
     skippedCount = result.skippedCount;
     timedOut = result.timedOut;
+    assetStats = result.assetStats;
   } catch (e) {
     console.warn("[clone] Asset inlining failed (continuing with un-inlined HTML):", e.message);
   }
   if (timedOut) {
-    // Add a soft warning if we hit the time budget
     warning = (warning ? warning + " " : "") + "Some assets were not inlined (time budget exhausted) — they remain as external references.";
+  }
+  // Build a user-friendly asset summary
+  let assetSummary = null;
+  if (assetStats) {
+    assetSummary = assetStats.assetsFound + " assets found: " +
+      assetStats.assetsUploaded + " uploaded to Cloudinary, " +
+      assetStats.assetsInlined + " CSS/JS inlined, " +
+      assetStats.assetsSkipped + " skipped" +
+      (assetStats.assetsFailed > 0 ? ", " + assetStats.assetsFailed + " failed" : "") + ".";
+    console.log("[clone] Asset summary:", assetSummary);
   }
 
   let links = [];
@@ -589,7 +605,7 @@ async function handleClone(req, res) {
   } catch (e) {
     console.warn("[clone] Link discovery failed:", e.message);
   }
-  return res.status(200).json({ html, warning, links, inlinedCount, skippedCount });
+  return res.status(200).json({ html, warning, links, inlinedCount, skippedCount, assetSummary });
 }
 
 // ===== Part 3: Multi-page clone (SSE — streams progress) =====
@@ -618,10 +634,15 @@ async function handleCloneMulti(req, res) {
     sendEvent("error", { error: "Method not allowed" });
     return res.end();
   }
-  const { url, browserId, uid } = req.body || {};
+  let { url, browserId, uid } = req.body || {};
   if (!url) {
     sendEvent("error", { error: "Please enter a URL to clone." });
     return res.end();
+  }
+  // Auto-prefix bare domains with https://
+  url = url.trim();
+  if (!/^https?:\/\//i.test(url)) {
+    url = "https://" + url;
   }
 
   // === SSRF checks (same as handleClone) ===
@@ -843,6 +864,7 @@ async function handleCloneMulti(req, res) {
       }),
       pageCount: Object.keys(files).length,
       warning,
+      assetSummary: "Multi-page clone complete with " + Object.keys(files).length + " pages.",
     });
   } catch (err) {
     // Log the FULL technical error server-side for debugging
@@ -1500,7 +1522,7 @@ async function handleApiDeploy(req, res) {
     if (!authInfo) return res.status(401).json({ error: "Invalid or missing API token" });
     const { html, title, ttl } = req.body || {};
     if (!html || typeof html !== "string") return res.status(400).json({ error: "html required" });
-    if (html.length > 500_000) return res.status(413).json({ error: "HTML too large (max 500KB)" });
+    if (html.length > 2_000_000) return res.status(413).json({ error: "HTML too large (max 2MB)" });
     const id = Math.random().toString(36).slice(2, 8);
     const now = Date.now();
     let expiresAt = null;
