@@ -32,6 +32,59 @@ const multipage = require("../lib/multipage");
 // ===== Clone upgrade: asset inlining + smart-scrape + multi-page crawl =====
 const cloneHelpers = require("../lib/clone-helpers");
 
+// ===== Firestore storage sanitizer =====
+// Firestore rejects native maps whose keys contain dots (e.g. "css/style.css")
+// because it interprets dots as nested field paths. It also rejects `undefined`
+// values and deeply nested arrays. To avoid all of these issues, we store the
+// file-tree and path-map as JSON STRINGS in single fields (filesJson, pathMapJson)
+// instead of native nested maps.
+//
+// This helper:
+//   1. Recursively removes `undefined` values (replaces with null)
+//   2. Serializes the files object and pathMap object to JSON strings
+//   3. Returns { filesJson, pathMapJson } ready to write to Firestore
+function sanitizeProjectForFirestore(files, pathMap) {
+  // Recursively replace undefined with null (Firestore rejects undefined)
+  function scrubUndefined(obj) {
+    if (obj === null || obj === undefined) return null;
+    if (Array.isArray(obj)) return obj.map(scrubUndefined);
+    if (typeof obj === "object") {
+      const out = {};
+      for (const k of Object.keys(obj)) {
+        out[k] = scrubUndefined(obj[k]);
+      }
+      return out;
+    }
+    return obj;
+  }
+  const cleanFiles = scrubUndefined(files || {});
+  const cleanPathMap = scrubUndefined(pathMap || {});
+  return {
+    filesJson: JSON.stringify(cleanFiles),
+    pathMapJson: JSON.stringify(cleanPathMap),
+  };
+}
+
+// Deserialize files + pathMap from a Firestore project doc.
+// Supports BOTH the new JSON-string format (filesJson/pathMapJson) AND the old
+// native-map format (files/pathMap) for backwards compatibility with docs
+// created before this fix.
+function deserializeProjectFiles(docData) {
+  let files = {};
+  let pathMap = {};
+  if (docData.filesJson && typeof docData.filesJson === "string") {
+    try { files = JSON.parse(docData.filesJson); } catch (e) { files = {}; }
+  } else if (docData.files && typeof docData.files === "object") {
+    files = docData.files;  // backwards compat with old docs
+  }
+  if (docData.pathMapJson && typeof docData.pathMapJson === "string") {
+    try { pathMap = JSON.parse(docData.pathMapJson); } catch (e) { pathMap = {}; }
+  } else if (docData.pathMap && typeof docData.pathMap === "object") {
+    pathMap = docData.pathMap;  // backwards compat
+  }
+  return { files, pathMap };
+}
+
 // ===== Custom name (slug) support =====
 // Reserved words that can't be used as custom names (would collide with app routes)
 const RESERVED_SLUGS = new Set([
@@ -329,13 +382,16 @@ async function handleClone(req, res) {
     }
   } catch (err) {
     clearTimeout(timeout);
+    // Log full technical error server-side
+    console.error("[clone] Fetch failed for", url, ":", err.message || err);
     if (err.name === "AbortError") {
-      return res.status(504).json({ error: "That site took too long to respond (8s timeout). Try a different URL." });
+      return res.status(504).json({ error: "That site took too long to respond. Try again or use a different URL." });
     }
-    return res.status(502).json({ error: "Couldn't fetch that URL. The site may be down or block cloning. (" + (err.message || "unknown error").slice(0, 80) + ")" });
+    return res.status(502).json({ error: "Couldn't reach that website. Check the URL and try again." });
   }
   if (!fetchRes.ok) {
-    return res.status(502).json({ error: `The target site returned HTTP ${fetchRes.status}.` });
+    console.error("[clone] HTTP " + fetchRes.status + " from", url);
+    return res.status(502).json({ error: "Couldn't reach that website. Check the URL and try again." });
   }
   const contentLength = parseInt(fetchRes.headers.get("content-length") || "0", 10);
   if (contentLength > 5 * 1024 * 1024) {
@@ -374,13 +430,13 @@ async function handleClone(req, res) {
         html = renderedHtml;
         warning = null;  // smart-scrape gave us rendered content, no warning needed
       } else {
-        // Smart-scrape failed — keep the raw HTML, warn the user
-        warning = "This page uses JavaScript rendering — the clone may be incomplete. (" + (scraped.error || "smart-scrape failed") + ")";
-        console.warn("[clone] smart-scrape failed:", scraped.error);
+        // Smart-scrape failed — keep the raw HTML, warn the user (no vendor names in UI)
+        warning = "This page uses JavaScript rendering and couldn't be fully cloned. Try again or clone a simpler page.";
+        console.warn("[clone] smart-scrape failed for", finalUrl, ":", scraped.error);
       }
     } else {
-      // No BROWSERLESS_API_KEY configured — show the existing warning
-      warning = "This page may require JavaScript to render — the cloned copy might look mostly blank. This is common with React, Vue, and other SPA frameworks.";
+      // No BROWSERLESS_API_KEY configured — show a friendly warning (no vendor names)
+      warning = "This page may use JavaScript rendering — the cloned copy might look mostly blank.";
     }
   } else {
     // Existing warning logic for pages that aren't JS shells but might still have minimal content
@@ -389,7 +445,7 @@ async function handleClone(req, res) {
       const bodyText = bodyMatch[1].replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<[^>]+>/g, "").trim();
       const hasRootDiv = /<div[^>]+id=["']?(root|app)["']?/i.test(html);
       if (bodyText.length < 100 || (hasRootDiv && bodyText.length < 200)) {
-        warning = "This page may require JavaScript to render — the cloned copy might look mostly blank. This is common with React, Vue, and other SPA frameworks.";
+        warning = "This page may use JavaScript rendering — the cloned copy might look mostly blank.";
       }
     }
   }
@@ -453,25 +509,25 @@ async function handleCloneMulti(req, res) {
   }
   const { url, browserId, uid } = req.body || {};
   if (!url) {
-    sendEvent("error", { error: "URL required" });
+    sendEvent("error", { error: "Please enter a URL to clone." });
     return res.end();
   }
 
   // === SSRF checks (same as handleClone) ===
   let parsedUrl;
   try { parsedUrl = new URL(url); } catch (e) {
-    sendEvent("error", { error: "Invalid URL. Must start with http:// or https://" });
+    sendEvent("error", { error: "That doesn't look like a valid URL. Make sure it starts with http:// or https://" });
     return res.end();
   }
   if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-    sendEvent("error", { error: "Only http:// and https:// URLs are allowed." });
+    sendEvent("error", { error: "Only http:// and https:// URLs can be cloned." });
     return res.end();
   }
   const hostname = parsedUrl.hostname.toLowerCase();
   const blockedHosts = ["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]", "metadata.google.internal"];
   for (const h of blockedHosts) {
     if (hostname === h || hostname.endsWith("." + h)) {
-      sendEvent("error", { error: "This URL points to an internal/private address and cannot be cloned." });
+      sendEvent("error", { error: "That URL points to an internal address and can't be cloned. Try a public website." });
       return res.end();
     }
   }
@@ -479,7 +535,7 @@ async function handleCloneMulti(req, res) {
   if (ipMatch) {
     const [_, a, b] = ipMatch.map(Number);
     if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || (a === 127)) {
-      sendEvent("error", { error: "This URL points to a private/internal IP range and cannot be cloned." });
+      sendEvent("error", { error: "That URL points to a private network address and can't be cloned. Try a public website." });
       return res.end();
     }
   }
@@ -488,11 +544,11 @@ async function handleCloneMulti(req, res) {
   sendEvent("progress", { message: "Checking robots.txt…", page: 0, total: 0 });
   const robots = await cloneHelpers.checkRobotsTxt(url);
   if (!robots.allowed) {
-    sendEvent("error", { error: "Crawling disallowed by robots.txt: " + robots.reason });
+    sendEvent("error", { error: "The target site's robots.txt blocks cloning. Try a different site." });
     return res.end();
   }
 
-  // === Fetch the initial page (same logic as handleClone) ===
+  // === Fetch the initial page ===
   sendEvent("progress", { message: "Fetching initial page…", page: 0, total: 0 });
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
@@ -507,26 +563,29 @@ async function handleCloneMulti(req, res) {
     if (finalIpMatch) {
       const [_, a, b] = finalIpMatch.map(Number);
       if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || (a === 127)) {
-        sendEvent("error", { error: "This URL redirected to a private/internal address and cannot be cloned." });
+        sendEvent("error", { error: "That URL redirected to a private network address and can't be cloned." });
         return res.end();
       }
     }
   } catch (err) {
     clearTimeout(timeout);
+    // Log full technical error server-side
+    console.error("[clone-multi] Fetch failed for", url, ":", err.message || err);
     if (err.name === "AbortError") {
-      sendEvent("error", { error: "That site took too long to respond (8s timeout). Try a different URL." });
+      sendEvent("error", { error: "That site took too long to respond. Try again or use a different URL." });
     } else {
-      sendEvent("error", { error: "Couldn't fetch that URL. (" + (err.message || "unknown error").slice(0, 80) + ")" });
+      sendEvent("error", { error: "Couldn't reach that website. Check the URL and try again." });
     }
     return res.end();
   }
   if (!fetchRes.ok) {
-    sendEvent("error", { error: "The target site returned HTTP " + fetchRes.status + "." });
+    console.error("[clone-multi] HTTP " + fetchRes.status + " from", url);
+    sendEvent("error", { error: "Couldn't reach that website. Check the URL and try again." });
     return res.end();
   }
   let initialHtml = await fetchRes.text();
   if (initialHtml.length > 5 * 1024 * 1024) {
-    sendEvent("error", { error: "That page is too large (>5MB). Try a smaller page." });
+    sendEvent("error", { error: "That page is too large to clone. Try a smaller page." });
     return res.end();
   }
 
@@ -538,7 +597,8 @@ async function handleCloneMulti(req, res) {
     if (scraped.ok && scraped.html) {
       initialHtml = scraped.html;
     } else {
-      warning = "Initial page uses JavaScript rendering — the clone may be incomplete. (" + (scraped.error || "smart-scrape failed") + ")";
+      warning = "This page uses JavaScript rendering and couldn't be fully cloned. Try again or clone a simpler page.";
+      console.warn("[clone-multi] smart-scrape failed for", finalUrl, ":", scraped.error);
     }
   }
 
@@ -646,15 +706,17 @@ async function handleCloneMulti(req, res) {
     const now = Date.now();
     const db = getDb();
     const pathMap = multipage.buildPathMap(files);
+    // Sanitize for Firestore: store as JSON strings to avoid dot-notation issues
+    const { filesJson, pathMapJson } = sanitizeProjectForFirestore(files, pathMap);
     await setDoc(doc(db, "projects", projectId), {
       id: projectId,
       title: "Cloned from " + hostname,
       browserId: browserId || "anonymous",
       ownerUid: uid || null,
       createdAt: now,
-      expiresAt: null,  // multi-page clones don't expire by default
-      files,
-      pathMap,
+      expiresAt: null,
+      filesJson,
+      pathMapJson,
       clonedFrom: finalUrl,
     });
     const baseUrl = "https://" + req.headers.host;
@@ -669,8 +731,10 @@ async function handleCloneMulti(req, res) {
       warning,
     });
   } catch (err) {
+    // Log the FULL technical error server-side for debugging
     console.error("[clone-multi] Storage failed:", err);
-    sendEvent("error", { error: "Failed to store the cloned project: " + (err.message || "unknown error") });
+    // Show a friendly, non-technical message to the user
+    sendEvent("error", { error: "Something went wrong saving your cloned site. Please try again." });
   }
   return res.end();
 }
@@ -1058,6 +1122,10 @@ async function handleMultiDeploy(req, res) {
     // Build the path map
     const pathMap = multipage.buildPathMap(files);
 
+    // Sanitize for Firestore: store as JSON strings to avoid dot-notation issues
+    // with keys like "css/style.css" (Firestore interprets dots as nested field paths)
+    const { filesJson, pathMapJson } = sanitizeProjectForFirestore(files, pathMap);
+
     // Generate ID and compute expiry
     const id = Math.random().toString(36).slice(2, 8);
     const now = Date.now();
@@ -1073,8 +1141,8 @@ async function handleMultiDeploy(req, res) {
       browserId: browserId || "anonymous",
       createdAt: now,
       expiresAt,
-      files,
-      pathMap,
+      filesJson,
+      pathMapJson,
       customName: normalizedCustomName,
     });
 
@@ -1132,8 +1200,8 @@ async function handleMultiServe(req, res) {
       return res.status(410).send(renderSiteExpired(data.title || "Untitled"));
     }
 
-    const pathMap = data.pathMap || {};
-    const files = data.files || {};
+    // Deserialize files + pathMap (supports new JSON-string format + old native-map format)
+    const { files, pathMap } = deserializeProjectFiles(data);
     const filePath = multipage.resolvePath(path, pathMap);
     if (!filePath) {
       return res.status(404).send(renderSiteError("Not found", "The page '" + path + "' doesn't exist in this project."));
@@ -1428,8 +1496,7 @@ async function handleSiteResolve(req, res) {
         return res.status(410).send(renderSiteExpired(projectData.title || "Untitled"));
       }
       // Serve the project's index.html (first file or "index.html")
-      const files = projectData.files || {};
-      const pathMap = projectData.pathMap || {};
+      const { files, pathMap } = deserializeProjectFiles(projectData);
       const indexPath = pathMap["/"] || "index.html";
       const content = files[indexPath];
       if (content) {
