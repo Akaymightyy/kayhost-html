@@ -3343,6 +3343,10 @@ Return ONLY the raw HTML:`;
         document.getElementById("clone-modal").classList.add("hidden");
         if (data.warning) toast(data.warning, "info");
         else toast("Cloned from " + url, "success");
+        // Show asset summary if available
+        if (data.assetSummary) {
+          setTimeout(function() { toast(data.assetSummary, "info"); }, 800);
+        }
         // Show other pages found on this site, so the person can clone another one next
         renderCloneLinks(data.links);
       } catch (err) {

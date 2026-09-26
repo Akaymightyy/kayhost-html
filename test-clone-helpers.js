@@ -40,7 +40,9 @@ eq(links[1].url, 'https://example.com/contact', 'second link is /contact');
 
 console.log('\nConstants:');
 eq(h.MAX_JS_INLINE_BYTES, 500 * 1024, 'JS inline limit 500KB');
-eq(h.MAX_IMG_INLINE_BYTES, 100 * 1024, 'Image inline limit 100KB');
+eq(h.MAX_ASSETS_PER_CLONE, 500, 'Max assets per clone 500');
+eq(h.MAX_ASSET_SIZE_BYTES, 20 * 1024 * 1024, 'Max asset size 20MB');
+eq(h.MAX_TOTAL_ASSET_BYTES, 50 * 1024 * 1024, 'Max total assets 50MB');
 eq(h.MULTI_PAGE_MAX_PAGES, 10, 'Multi-page max 10');
 eq(h.SMART_SCRAPE_TIMEOUT_MS, 18000, 'Smart-scrape timeout 18s');
 
