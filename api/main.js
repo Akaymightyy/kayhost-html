@@ -32,6 +32,59 @@ const multipage = require("../lib/multipage");
 // ===== Clone upgrade: asset inlining + smart-scrape + multi-page crawl =====
 const cloneHelpers = require("../lib/clone-helpers");
 
+// ===== Custom name (slug) support =====
+// Reserved words that can't be used as custom names (would collide with app routes)
+const RESERVED_SLUGS = new Set([
+  "admin", "api", "settings", "new", "templates", "docs", "pricing", "sites",
+  "clipboard", "tools", "media", "changelog", "privacy", "terms", "site", "p",
+  "signin", "signup", "save-user", "user-profile", "paystack", "clone", "deploy",
+  "ashna-models", "ai-providers", "ai-edit", "serve", "og-image", "multi-deploy",
+  "multi-serve", "clone-multi", "media-list", "media-delete", "api-sites",
+  "api-deploy", "api-delete", "api-token-create", "api-token-list", "api-token-delete",
+  "check-slug", "site-resolve", "site-update-name", "sw.js", "manifest.json",
+  "favicon", "favicon.ico", "favicon.png", "icon", "icon.png", "icon-192",
+  "icon-512", "apple-touch-icon", "robots", "robots.txt", "svarna-template",
+  "index.html", "_next", "auth", "upgrade", "pro", "billing", "account",
+]);
+
+// Validate a custom name (slug). Returns { ok: true } or { ok: false, error }.
+function validateSlug(slug) {
+  if (!slug) return { ok: false, error: "Custom name is required" };
+  if (typeof slug !== "string") return { ok: false, error: "Invalid custom name" };
+  const lower = slug.toLowerCase().trim();
+  if (lower.length < 3) return { ok: false, error: "Custom name must be at least 3 characters" };
+  if (lower.length > 30) return { ok: false, error: "Custom name must be 30 characters or fewer" };
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(lower)) {
+    return { ok: false, error: "Custom name can only contain lowercase letters, numbers, and hyphens (no leading/trailing hyphens)" };
+  }
+  if (RESERVED_SLUGS.has(lower)) {
+    return { ok: false, error: "\"" + lower + "\" is a reserved word — try a different name" };
+  }
+  return { ok: true, normalized: lower };
+}
+
+// Check if a slug is available (not taken by another site, not reserved).
+// Returns { available: true } or { available: false, error }.
+async function checkSlugAvailability(slug) {
+  const validation = validateSlug(slug);
+  if (!validation.ok) return { available: false, error: validation.error };
+  const lower = validation.normalized;
+  const db = getDb();
+  // Check if any site already uses this customName
+  const q = query(collection(db, "sites"), where("customName", "==", lower));
+  const snap = await getDocs(q);
+  if (!snap.empty) {
+    return { available: false, error: "\"" + lower + "\" is already taken — try a different name" };
+  }
+  // Also check the projects collection (multi-page sites can have custom names too)
+  const q2 = query(collection(db, "projects"), where("customName", "==", lower));
+  const snap2 = await getDocs(q2);
+  if (!snap2.empty) {
+    return { available: false, error: "\"" + lower + "\" is already taken — try a different name" };
+  }
+  return { available: true };
+}
+
 // ===== Shared scraper-blocker (since we can't use Edge Middleware without Next.js) =====
 function isScraperUa(ua) {
   if (!ua || ua.length < 20) return true;
@@ -56,7 +109,7 @@ const CLOUDINARY_UPLOAD_PRESET = "kayhost";
 async function handleDeploy(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
   try {
-    const { html, title, ttl, browserId } = req.body || {};
+    const { html, title, ttl, browserId, customName } = req.body || {};
     if (!html || typeof html !== "string") return res.status(400).json({ error: "HTML content required" });
     if (html.length > 500_000) return res.status(413).json({ error: "HTML too large (max 500KB)" });
     const id = Math.random().toString(36).slice(2, 8);
@@ -65,13 +118,31 @@ async function handleDeploy(req, res) {
     if (ttl === "1d") expiresAt = now + 86400000;
     else if (ttl === "7d") expiresAt = now + 604800000;
     else if (ttl === "30d") expiresAt = now + 2592000000;
+
+    // --- Custom name (slug) handling ---
+    let normalizedCustomName = null;
+    if (customName && typeof customName === "string" && customName.trim()) {
+      const validation = validateSlug(customName);
+      if (!validation.ok) {
+        return res.status(400).json({ error: validation.error });
+      }
+      const availability = await checkSlugAvailability(validation.normalized);
+      if (!availability.available) {
+        return res.status(409).json({ error: availability.error });
+      }
+      normalizedCustomName = validation.normalized;
+    }
+
     const db = getDb();
     await setDoc(doc(db, "sites", id), {
       id, html, title: title || "Untitled",
       browserId: browserId || "anonymous", createdAt: now, expiresAt,
+      customName: normalizedCustomName,
     });
     const baseUrl = `https://${req.headers.host}`;
-    return res.status(200).json({ id, url: `${baseUrl}/site/${id}`, expiresAt });
+    // Return the custom-name URL if set, otherwise the random-ID URL
+    const url = normalizedCustomName ? `${baseUrl}/${normalizedCustomName}` : `${baseUrl}/site/${id}`;
+    return res.status(200).json({ id, url, expiresAt, customName: normalizedCustomName });
   } catch (err) {
     console.error("[deploy] Error:", err);
     return res.status(500).json({ error: err.message || "Failed to deploy" });
@@ -90,7 +161,7 @@ async function handleSites(req, res) {
     const sites = [];
     snapshot.forEach((docSnap) => {
       const d = docSnap.data();
-      sites.push({ id: d.id, title: d.title, createdAt: d.createdAt, expiresAt: d.expiresAt });
+      sites.push({ id: d.id, title: d.title, createdAt: d.createdAt, expiresAt: d.expiresAt, customName: d.customName || null });
     });
     sites.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     return res.status(200).json({ sites: sites.slice(0, 50) });
@@ -957,7 +1028,7 @@ async function handleSite(req, res) {
 async function handleMultiDeploy(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
   try {
-    const { files, title, ttl, browserId } = req.body || {};
+    const { files, title, ttl, browserId, customName } = req.body || {};
 
     // Validate the files object
     const validation = multipage.validateFiles(files);
@@ -965,12 +1036,23 @@ async function handleMultiDeploy(req, res) {
       return res.status(400).json({ error: validation.error });
     }
 
-    // Only treat as multi-page if there are 2+ HTML files. If only 1 HTML file
-    // + CSS/JS, the frontend should use the existing single-file deploy instead.
-    // (We still accept it here as a fallback, but warn.)
+    // Only treat as multi-page if there are 2+ HTML files.
     if (!multipage.isMultiPageProject(files)) {
-      // Not strictly an error — but flag it so the frontend knows to use single-file deploy
       console.warn("[multi-deploy] Project has only 1 HTML file — should use /api/deploy instead");
+    }
+
+    // --- Custom name (slug) handling ---
+    let normalizedCustomName = null;
+    if (customName && typeof customName === "string" && customName.trim()) {
+      const slugValidation = validateSlug(customName);
+      if (!slugValidation.ok) {
+        return res.status(400).json({ error: slugValidation.error });
+      }
+      const availability = await checkSlugAvailability(slugValidation.normalized);
+      if (!availability.available) {
+        return res.status(409).json({ error: availability.error });
+      }
+      normalizedCustomName = slugValidation.normalized;
     }
 
     // Build the path map
@@ -991,16 +1073,21 @@ async function handleMultiDeploy(req, res) {
       browserId: browserId || "anonymous",
       createdAt: now,
       expiresAt,
-      files,        // { "index.html": "...", "about.html": "...", ... }
-      pathMap,      // { "/": "index.html", "/about": "about.html", ... }
+      files,
+      pathMap,
+      customName: normalizedCustomName,
     });
 
     const baseUrl = `https://${req.headers.host}`;
+    // For multi-page with custom name, the URL is /<custom-name> (which resolves to the project's index)
+    // For multi-page without custom name, the URL is /p/<id>
+    const url = normalizedCustomName ? `${baseUrl}/${normalizedCustomName}` : `${baseUrl}/p/${id}`;
     return res.status(200).json({
       id,
-      url: `${baseUrl}/p/${id}`,
+      url,
       expiresAt,
       multiPage: true,
+      customName: normalizedCustomName,
     });
   } catch (err) {
     console.error("[multi-deploy] Error:", err);
@@ -1280,6 +1367,150 @@ async function handleApiDelete(req, res) {
   }
 }
 
+// ===== Custom name (slug) handlers =====
+// GET /api/check-slug?slug=akaytech
+//   Returns { available: true } or { available: false, error }
+async function handleCheckSlug(req, res) {
+  if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
+  try {
+    const slug = req.query.slug;
+    if (!slug) return res.status(200).json({ available: false, error: "Enter a custom name to check" });
+    const result = await checkSlugAvailability(slug);
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error("[check-slug] Error:", err);
+    return res.status(500).json({ available: false, error: "Couldn't check availability" });
+  }
+}
+
+// GET /api/site-resolve?slug=akaytech
+//   Resolves a custom-name slug to its site HTML (single-page) or project (multi-page).
+//   Used by the /:slug rewrite in vercel.json.
+//   If the slug is reserved or not found, serves the SPA HTML (so the SPA router takes over).
+async function handleSiteResolve(req, res) {
+  // NO scraper-blocker — social media crawlers need to fetch this for link previews
+  try {
+    const slug = (req.query.slug || "").toLowerCase().trim();
+    if (!slug) {
+      // No slug — serve the SPA
+      return serveSpa(req, res);
+    }
+
+    // Check reserved words — serve the SPA so the app's own routes work
+    if (RESERVED_SLUGS.has(slug)) {
+      return serveSpa(req, res);
+    }
+
+    const db = getDb();
+
+    // 1. Try the sites collection (single-page)
+    const siteQuery = query(collection(db, "sites"), where("customName", "==", slug));
+    const siteSnap = await getDocs(siteQuery);
+    if (!siteSnap.empty) {
+      const siteData = siteSnap.docs[0].data();
+      if (siteData.expiresAt && Date.now() > siteData.expiresAt) {
+        return res.status(410).send(renderSiteExpired(siteData.title || "Untitled"));
+      }
+      // Inject OG meta + serve
+      const siteUrl = `https://${req.headers.host}/${slug}`;
+      const htmlWithOg = injectOgMeta(siteData.html, siteData.title || "Untitled", siteUrl);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      return res.status(200).send(htmlWithOg);
+    }
+
+    // 2. Try the projects collection (multi-page)
+    const projectQuery = query(collection(db, "projects"), where("customName", "==", slug));
+    const projectSnap = await getDocs(projectQuery);
+    if (!projectSnap.empty) {
+      const projectData = projectSnap.docs[0].data();
+      if (projectData.expiresAt && Date.now() > projectData.expiresAt) {
+        return res.status(410).send(renderSiteExpired(projectData.title || "Untitled"));
+      }
+      // Serve the project's index.html (first file or "index.html")
+      const files = projectData.files || {};
+      const pathMap = projectData.pathMap || {};
+      const indexPath = pathMap["/"] || "index.html";
+      const content = files[indexPath];
+      if (content) {
+        const projectUrl = `https://${req.headers.host}/${slug}`;
+        const htmlWithOg = injectOgMeta(content, projectData.title || "Untitled", projectUrl);
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        return res.status(200).send(htmlWithOg);
+      }
+    }
+
+    // 3. Not found — serve the SPA (so the app shows its normal 404 / home view)
+    return serveSpa(req, res);
+  } catch (err) {
+    console.error("[site-resolve] Error:", err);
+    return serveSpa(req, res);
+  }
+}
+
+// Serve the SPA HTML by fetching /index.html from the same origin.
+// Used as a fallback when a slug is reserved or not found.
+async function serveSpa(req, res) {
+  try {
+    const baseUrl = `https://${req.headers.host}`;
+    const spaRes = await fetch(baseUrl + "/index.html");
+    if (spaRes.ok) {
+      const html = await spaRes.text();
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.status(200).send(html);
+    }
+  } catch (e) {
+    console.warn("[site-resolve] Failed to fetch SPA:", e.message);
+  }
+  // Ultimate fallback — minimal HTML that redirects to root
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  return res.status(200).send('<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=/"></head><body></body></html>');
+}
+
+// POST /api/site-update-name
+//   body: { id, customName, browserId }
+//   Sets or removes the custom name on an existing site.
+//   If customName is null/empty, removes the custom name.
+async function handleSiteUpdateName(req, res) {
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  try {
+    const { id, customName, browserId } = req.body || {};
+    if (!id) return res.status(400).json({ error: "id required" });
+    const db = getDb();
+    const ref = doc(db, "sites", id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return res.status(404).json({ error: "Site not found" });
+    const data = snap.data();
+    // Ownership check: only the owner can change the name
+    if (data.browserId !== (browserId || "anonymous")) {
+      return res.status(403).json({ error: "Not your site" });
+    }
+
+    let normalizedCustomName = null;
+    if (customName && typeof customName === "string" && customName.trim()) {
+      const validation = validateSlug(customName);
+      if (!validation.ok) return res.status(400).json({ error: validation.error });
+      // Check availability — but allow keeping the SAME name (no conflict with self)
+      if (data.customName !== validation.normalized) {
+        const availability = await checkSlugAvailability(validation.normalized);
+        if (!availability.available) {
+          return res.status(409).json({ error: availability.error });
+        }
+      }
+      normalizedCustomName = validation.normalized;
+    }
+
+    await setDoc(ref, { customName: normalizedCustomName }, { merge: true });
+    const baseUrl = `https://${req.headers.host}`;
+    const url = normalizedCustomName ? `${baseUrl}/${normalizedCustomName}` : `${baseUrl}/site/${id}`;
+    return res.status(200).json({ ok: true, customName: normalizedCustomName, url });
+  } catch (err) {
+    console.error("[site-update-name] Error:", err);
+    return res.status(500).json({ error: err.message || "Failed to update name" });
+  }
+}
+
 // ===== Dispatcher =====
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -1291,7 +1522,7 @@ module.exports = async (req, res) => {
   // (both serve user-generated pages and need to be fetchable by
   // WhatsApp/Facebook/etc. for link previews)
   const route = req.query.route || "";
-  if (route !== "site" && route !== "multi-serve" && isScraperUa(req.headers["user-agent"] || "")) {
+  if (route !== "site" && route !== "multi-serve" && route !== "site-resolve" && isScraperUa(req.headers["user-agent"] || "")) {
     return res.status(403).json({ error: "Automated access forbidden. Use a real browser." });
   }
 
@@ -1311,6 +1542,9 @@ module.exports = async (req, res) => {
     case "multi-deploy":    return handleMultiDeploy(req, res);
     case "multi-serve":     return handleMultiServe(req, res);
     case "og-image":        return handleOgImage(req, res);
+    case "check-slug":      return handleCheckSlug(req, res);
+    case "site-resolve":    return handleSiteResolve(req, res);
+    case "site-update-name":return handleSiteUpdateName(req, res);
     case "api-token-create":return handleApiTokenCreate(req, res);
     case "api-token-list":  return handleApiTokenList(req, res);
     case "api-token-delete":return handleApiTokenDelete(req, res);
