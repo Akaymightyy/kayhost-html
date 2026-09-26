@@ -603,8 +603,19 @@
         <h3 style="font-size:17px;margin-bottom:8px;">Clone from URL</h3>
         <p style="color:var(--fg-secondary);font-size:14px;margin-bottom:14px;">Paste a live page URL and we'll fetch its HTML and host a copy.</p>
         <input class="input" id="clone-url" placeholder="https://example.com" style="margin-bottom:10px;" />
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--fg-secondary);margin-bottom:10px;cursor:pointer;">
+          <input type="checkbox" id="clone-multi-toggle" style="margin:0;" />
+          <span>Clone linked pages too (crawls up to 10 same-domain pages, respects robots.txt)</span>
+        </label>
+        <!-- Progress area (shown during multi-page clone) -->
+        <div id="clone-progress" style="display:none;margin-bottom:10px;padding:10px;background:var(--bg);border-radius:8px;font-size:13px;color:var(--fg-secondary);">
+          <div id="clone-progress-message">Starting…</div>
+          <div style="height:4px;background:var(--border);border-radius:2px;margin-top:8px;overflow:hidden;">
+            <div id="clone-progress-bar" style="height:100%;width:0%;background:var(--purple);transition:width 0.3s ease;"></div>
+          </div>
+        </div>
         <div style="display:flex;gap:8px;">
-          <button class="btn btn-ghost btn-block" onclick="document.getElementById('clone-modal').classList.add('hidden')">Cancel</button>
+          <button class="btn btn-ghost btn-block" onclick="document.getElementById('clone-modal').classList.add('hidden')" id="clone-cancel-btn">Cancel</button>
           <button class="btn btn-purple btn-block" id="clone-go" onclick="doClone()">Fetch & host</button>
         </div>
       </div>
@@ -3223,8 +3234,108 @@ Return ONLY the raw HTML:`;
     async function doClone() {
       const url = document.getElementById("clone-url").value.trim();
       if (!url) { toast("Enter a URL", "error"); return; }
-      await cloneUrl(url);
+      // Part 3: if the multi-page toggle is on, use the SSE multi-page clone endpoint
+      const multiToggle = document.getElementById("clone-multi-toggle");
+      if (multiToggle && multiToggle.checked) {
+        await cloneMultiUrl(url);
+      } else {
+        await cloneUrl(url);
+      }
     }
+
+    // ===== Part 3: Multi-page clone (SSE — streams progress) =====
+    // Calls /api/clone-multi, consumes the SSE stream, shows progress in the modal.
+    async function cloneMultiUrl(url) {
+      const btn = document.getElementById("clone-go");
+      const cancelBtn = document.getElementById("clone-cancel-btn");
+      const progressDiv = document.getElementById("clone-progress");
+      const progressMsg = document.getElementById("clone-progress-message");
+      const progressBar = document.getElementById("clone-progress-bar");
+
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Cloning...';
+      cancelBtn.disabled = true;
+      progressDiv.style.display = "block";
+      progressMsg.textContent = "Starting…";
+      progressBar.style.width = "0%";
+
+      const u = window.currentUser || null;
+      const uid = u ? u.uid : null;
+      const browserId = getBrowserId();
+
+      try {
+        const res = await fetch("/api/clone-multi", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, browserId, uid }),
+        });
+        if (!res.ok) {
+          let errMsg = "Couldn't clone that URL.";
+          try { const errData = await res.json(); if (errData && errData.error) errMsg = errData.error; }
+          catch (e) {}
+          throw new Error(errMsg);
+        }
+
+        // Read the SSE stream
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let finalData = null;
+        let streamError = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split("\n\n");
+          buffer = events.pop();
+          for (const evt of events) {
+            const lines = evt.split("\n");
+            let eventType = "message", dataStr = "";
+            for (const line of lines) {
+              if (line.startsWith("event:")) eventType = line.slice(6).trim();
+              else if (line.startsWith("data:")) dataStr += line.slice(5).trim();
+            }
+            if (!dataStr) continue;
+            let data;
+            try { data = JSON.parse(dataStr); } catch (e) { continue; }
+            if (eventType === "progress") {
+              progressMsg.textContent = data.message || "Working…";
+              if (data.total && data.total > 0) {
+                const pct = Math.round(((data.page || 0) / data.total) * 100);
+                progressBar.style.width = pct + "%";
+              }
+            } else if (eventType === "done") {
+              finalData = data;
+              progressBar.style.width = "100%";
+              progressMsg.textContent = "Done! " + (data.pageCount || 0) + " pages cloned.";
+            } else if (eventType === "error") {
+              streamError = data.error || "Clone failed";
+            }
+          }
+        }
+
+        if (streamError) throw new Error(streamError);
+        if (!finalData) throw new Error("No response from clone server.");
+
+        // Success — show the project URL
+        document.getElementById("clone-modal").classList.add("hidden");
+        if (finalData.warning) toast(finalData.warning, "info");
+        toast("Cloned " + finalData.pageCount + " pages from " + url, "success");
+        // Open the project URL in a new tab
+        window.open(finalData.url, "_blank");
+        // Reset the progress UI
+        progressDiv.style.display = "none";
+        progressBar.style.width = "0%";
+      } catch (err) {
+        progressMsg.textContent = "Failed: " + (err.message || "unknown error");
+        progressBar.style.width = "0%";
+        toast(err.message || "Connection error. Try again.", "error");
+      } finally {
+        btn.disabled = false; btn.textContent = "Fetch & host";
+        cancelBtn.disabled = false;
+      }
+    }
+    window.cloneMultiUrl = cloneMultiUrl;
     async function cloneUrl(url) {
       document.getElementById("clone-url").value = url;
       const btn = document.getElementById("clone-go");

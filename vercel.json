@@ -1,7 +1,8 @@
 {
   "functions": {
     "api/ai-edit.js": { "maxDuration": 60 },
-    "api/ashna-models.js": { "maxDuration": 15 }
+    "api/ashna-models.js": { "maxDuration": 15 },
+    "api/main.js": { "maxDuration": 300 }
   },
   "headers": [
     {
@@ -32,6 +33,7 @@
     { "source": "/api/sites", "destination": "/api/main?route=sites" },
     { "source": "/api/media", "destination": "/api/main?route=media" },
     { "source": "/api/clone", "destination": "/api/main?route=clone" },
+    { "source": "/api/clone-multi", "destination": "/api/main?route=clone-multi" },
     { "source": "/api/save-user", "destination": "/api/main?route=save-user" },
     { "source": "/api/settings", "destination": "/api/main?route=settings" },
     { "source": "/api/user-profile", "destination": "/api/main?route=user-profile" },
