@@ -1227,10 +1227,6 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
         <option value="claude-opus">Claude Opus 5 — bring your key</option>
         <option value="gpt-mini">GPT-4.1 mini — bring your key</option>
         <option value="gpt">GPT-5.5 — bring your key</option>
-        <!-- AshnaAI - Pro group, populated dynamically by loadAshnaModels() -->
-        <optgroup label="AshnaAI — Pro" id="ashna-optgroup" style="display:none;"></optgroup>
-        <!-- OpenCode Zen group, populated dynamically by loadAiProviders() -->
-        <optgroup label="OpenCode Zen — Pro" id="opencode-optgroup" style="display:none;"></optgroup>
         <!-- OpenRouter group — FREE tier (not Pro), populated dynamically by loadAiProviders() -->
         <optgroup label="OpenRouter (Free)" id="openrouter-optgroup" style="display:none;"></optgroup>
       </select>
@@ -2061,8 +2057,7 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
       // Determine tier badge
       var tier = "FREE";
       var tierColor = "#22c55e";
-      if (currentModelId.indexOf("ashna:") === 0 || currentModelId.indexOf("opencode:") === 0) { tier = "PRO"; tierColor = "#f59e0b"; }
-      else if (currentModelId.indexOf("openrouter:") === 0) { tier = "FREE"; tierColor = "#22c55e"; }
+      if (currentModelId.indexOf("openrouter:") === 0) { tier = "FREE"; tierColor = "#22c55e"; }
       else if (currentModelId.indexOf("gemini-pro") === 0 || currentModelId.indexOf("claude") === 0 || currentModelId.indexOf("gpt") === 0) { tier = "BYOK"; tierColor = "#3b82f6"; }
 
       box.innerHTML =
@@ -2084,7 +2079,7 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
           '<input type="text" id="floating-model-search" placeholder="Search models..." oninput="filterFloatingModels()" style="width:100%;font-size:11px;padding:5px 8px;border:none;border-bottom:1px solid var(--border);background:var(--bg);color:var(--fg);font-family:inherit;outline:none;" />' +
           '<div id="floating-model-options" style="max-height:120px;overflow-y:auto;"></div>' +
           '<div style="padding:4px 8px;border-top:1px solid var(--border);font-size:9px;color:var(--fg-muted);">' +
-            '<a href="#" onclick="event.preventDefault();toast(\'Free: Gemini/OpenRouter (10/day). PRO: AshnaAI/OpenCode (50/day). BYOK: paste your own key in Settings.\',\'info\')" style="color:var(--purple-text);text-decoration:underline;">Which model should I use?</a>' +
+            '<a href="#" onclick="event.preventDefault();toast(\'Free: Gemini/OpenRouter (50/day each). BYOK: paste your own key in Settings.\',\'info\')" style="color:var(--purple-text);text-decoration:underline;">Which model should I use?</a>' +
           '</div>' +
         '</div>' +
         // Row 4: quick action buttons
@@ -2132,7 +2127,7 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
         if (q && text.toLowerCase().indexOf(q) < 0) continue;
         // Determine tier
         var t = "FREE", tc = "#22c55e";
-        if (val.indexOf("ashna:") === 0 || val.indexOf("opencode:") === 0) { t = "PRO"; tc = "#f59e0b"; }
+        
         else if (val.indexOf("openrouter:") === 0) { t = "FREE"; tc = "#22c55e"; }
         else if (val.indexOf("gemini-pro") === 0 || val.indexOf("claude") === 0 || val.indexOf("gpt") === 0) { t = "BYOK"; tc = "#3b82f6"; }
         var isSel = val === currentVal;
@@ -2176,7 +2171,7 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
         var opt = mainSelect.options[mainSelect.selectedIndex];
         var name = opt ? opt.textContent : val;
         var tier = "FREE", tc = "#22c55e";
-        if (val.indexOf("ashna:") === 0 || val.indexOf("opencode:") === 0) { tier = "PRO"; tc = "#f59e0b"; }
+        
         else if (val.indexOf("openrouter:") === 0) { tier = "FREE"; tc = "#22c55e"; }
         else if (val.indexOf("gemini-pro") === 0 || val.indexOf("claude") === 0 || val.indexOf("gpt") === 0) { tier = "BYOK"; tc = "#3b82f6"; }
         var span = bar.querySelector("span");
@@ -2449,7 +2444,7 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
     }
 
     // ===== Phase 3: Streaming AI edit (SSE) =====
-    // Tries streaming first for OpenAI-compatible providers (openrouter, opencode, ashna).
+    // Tries streaming first for OpenAI-compatible providers (openrouter).
     // Falls back to the non-streaming applyAiEdit flow if streaming unsupported or fails.
     // Returns true if streaming succeeded, false to indicate the caller should fallback.
     async function tryStreamAiEdit(modelChoice, htmlToSend, selector, inst, onToken) {
@@ -2458,29 +2453,16 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
       if (modelChoice && modelChoice.indexOf("openrouter:") === 0) {
         provider = "openrouter";
         providerModel = modelChoice.slice("openrouter:".length);
-      } else if (modelChoice && modelChoice.indexOf("opencode:") === 0) {
-        provider = "opencode";
-        providerModel = modelChoice.slice("opencode:".length);
-      } else if (modelChoice && modelChoice.indexOf("ashna:") === 0) {
-        provider = "ashna";
-        providerModel = modelChoice.slice("ashna:".length);
       } else {
         return { ok: false, reason: "no-stream-provider" };
       }
 
-      // For Pro providers (ashna, opencode), get the Firebase ID token
-      let authToken = null;
-      if (provider === "ashna" || provider === "opencode") {
-        try { authToken = await getIdTokenForAdmin(); } catch (e) { return { ok: false, reason: "auth-failed" }; }
-        if (!authToken) return { ok: false, reason: "auth-failed" };
-      }
 
       try {
         const res = await fetch("/api/ai-edit?stream=1", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(authToken ? { "Authorization": "Bearer " + authToken } : {}),
           },
           body: JSON.stringify({
             html: htmlToSend,
@@ -2616,34 +2598,8 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
           console.warn("[ai-edit] Stream failed (" + streamResult.reason + "), falling back to non-streaming:", streamResult.error);
         }
 
-        // --- Ashna branch (Pro-only, server-side key + Firebase token) ---
-        // Ashna model option values are prefixed with "ashna:" so we can dispatch
-        // here without a registry lookup. The actual model ID is the part after
-        // the colon. The request includes provider:"ashna" + the Firebase ID
-        // token in the Authorization header (server verifies Pro status).
-        // --- OpenCode Zen branch (Pro-only, server-side key + Firebase token) ---
-        if (modelChoice && modelChoice.indexOf("opencode:") === 0) {
-          const providerId = "opencode";
-          const providerModelId = modelChoice.slice("opencode:".length);
-          let idToken = null;
-          try { idToken = await getIdTokenForAdmin(); } catch (e) { console.warn("[" + providerId + "] getIdTokenForAdmin threw:", e.message); }
-          if (!idToken) { toast("Session expired — sign out and back in", "error"); throw new Error("Session expired"); }
-          const res = await fetch("/api/ai-edit", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
-            body: JSON.stringify({ provider: providerId, model: providerModelId, html: (typeof _files !== "undefined" && _files.length > 1) ? mergeFilesToHtml() : currentHtml, selector: selectedSelector, instruction: inst, browserId: getBrowserId() }),
-            signal: controller.signal,
-          });
-          if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            if (res.status === 401) { toast("Session expired — sign out and back in", "error"); throw new Error("Session expired"); }
-            if (res.status === 403 && errData.proRequired) { if (typeof showProUpgrade === "function") { showProUpgrade("OpenCode Zen", errData.error || "Pro required"); } throw new Error(errData.error || "Pro required"); }
-            throw new Error(errData.error || "AI edit failed");
-          }
-          html = (await res.json()).html;
-        }
         // --- OpenRouter branch (FREE tier — not Pro-gated, same as Gemini) ---
-        else if (modelChoice && modelChoice.indexOf("openrouter:") === 0) {
+        if (modelChoice && modelChoice.indexOf("openrouter:") === 0) {
           const providerModelId = modelChoice.slice("openrouter:".length);
           const res = await fetch("/api/ai-edit", {
             method: "POST",
@@ -2657,57 +2613,6 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
           }
           html = (await res.json()).html;
           bumpLocalUsageDisplay();
-        }
-        // --- Ashna branch (Pro-only, server-side key + Firebase token) ---
-        else if (modelChoice && modelChoice.indexOf("ashna:") === 0) {
-          const ashnaModelId = modelChoice.slice("ashna:".length);
-          // Get a Firebase ID token to send to the server.
-          // The server uses this to verify the user's identity + Pro status.
-          // Tries Firebase SDK first (Google/GitHub), then localStorage fallback
-          // (email/password REST API sign-in stores idToken there).
-          let idToken = null;
-          try {
-            idToken = await getIdTokenForAdmin();
-          } catch (e) {
-            console.warn("[ashna] getIdTokenForAdmin threw:", e.message);
-          }
-          if (!idToken) {
-            // Try to re-sign-in: clear stale session and prompt
-            toast("Your session has expired. Please sign out and sign back in.", "error");
-            throw new Error("Session expired — sign out and back in to use Ashna models");
-          }
-          const res = await fetch("/api/ai-edit", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": "Bearer " + idToken,
-            },
-            body: JSON.stringify({
-              provider: "ashna",
-              model: ashnaModelId,
-              html: (typeof _files !== "undefined" && _files.length > 1) ? mergeFilesToHtml() : currentHtml,
-              selector: selectedSelector,
-              instruction: inst,
-              browserId: getBrowserId(),
-            }),
-            signal: controller.signal,
-          });
-          if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            if (res.status === 401) {
-              toast("Session expired — sign out and back in", "error");
-              throw new Error("Your session has expired. Sign out and sign back in to use Ashna models.");
-            }
-            if (res.status === 403 && errData.proRequired) {
-              // Non-Pro user somehow reached here — open upgrade modal
-              if (typeof showProUpgrade === "function") {
-                showProUpgrade("AshnaAI", errData.error || "AshnaAI is a Pro feature.");
-              }
-              throw new Error(errData.error || "Pro required");
-            }
-            throw new Error(errData.error || "AI edit failed");
-          }
-          html = (await res.json()).html;
         } else {
           // --- Gemini / BYOK branch (unchanged from before) ---
           const provider = AI_PROVIDERS[modelChoice];
@@ -2890,8 +2795,7 @@ Return ONLY the raw HTML:`;
       const el = document.getElementById("ai-usage-badge");
       if (!el) return;
       const modelChoice = document.getElementById("ai-model").value;
-      // Pro-only server-side models (Ashna, OpenCode) — hide the free-usage badge.
-      if (modelChoice && (modelChoice.indexOf("ashna:") === 0 || modelChoice.indexOf("opencode:") === 0)) {
+      // Server-side models (OpenRouter) — hide the free-usage badge.
         el.style.display = "none";
         return;
       }
@@ -2910,8 +2814,7 @@ Return ONLY the raw HTML:`;
     }
     function saveByokKey() {
       const modelChoice = document.getElementById("ai-model").value;
-      // Server-side-key models (Ashna, OpenCode, OpenRouter) don't use BYOK — no-op
-      if (modelChoice && (modelChoice.indexOf("ashna:") === 0 || modelChoice.indexOf("opencode:") === 0)) return;
+      // Server-side-key models (OpenRouter) don't use BYOK — no-op
       const provider = AI_PROVIDERS[modelChoice];
       if (!provider) return;
       const val = document.getElementById("ai-byok-key").value.trim();
@@ -2923,8 +2826,7 @@ Return ONLY the raw HTML:`;
     }
     function clearByokKey() {
       const modelChoice = document.getElementById("ai-model").value;
-      // Server-side-key models (Ashna, OpenCode, OpenRouter) don't use BYOK — no-op
-      if (modelChoice && (modelChoice.indexOf("ashna:") === 0 || modelChoice.indexOf("opencode:") === 0)) return;
+      // Server-side-key models (OpenRouter) don't use BYOK — no-op
       const provider = AI_PROVIDERS[modelChoice];
       if (!provider) return;
       removeByokKey(provider.byokProvider);
@@ -2934,13 +2836,11 @@ Return ONLY the raw HTML:`;
       const modelChoice = document.getElementById("ai-model").value;
       const row = document.getElementById("ai-byok-row");
       const saved = document.getElementById("ai-byok-saved");
-      // Pro-only server-side models (Ashna, OpenCode) — no BYOK, show upgrade if not Pro
-      if (modelChoice && (modelChoice.indexOf("ashna:") === 0 || modelChoice.indexOf("opencode:") === 0)) {
+      // Server-side models (OpenRouter) — no BYOK needed
         row.style.display = "none";
         saved.style.display = "none";
         const isPro = (window.kayhostUserPro === true) || (window.currentUser && window.currentUser.pro === true);
         if (!isPro) {
-          const providerName = modelChoice.indexOf("ashna:") === 0 ? "AshnaAI" : "OpenCode Zen";
           document.getElementById("ai-model").value = "gemini";
           if (typeof showProUpgrade === "function") {
             showProUpgrade(providerName, providerName + " is a Pro-only AI provider. Upgrade to Pro to use it.");
@@ -2967,47 +2867,8 @@ Return ONLY the raw HTML:`;
       renderUsageBadge();
     }
 
-    // --- AshnaAI catalog loader (Pro-only provider) ---
-    // Fetches /api/ashna-models on page load + when the AI panel opens.
-    // Populates the <optgroup id="ashna-optgroup"> with options whose value is
-    // "ashna:<model_id>". If the fetch fails or returns empty, the optgroup
-    // stays hidden and Gemini keeps working as the default.
-    let _ashnaCatalogLoaded = false;
-    async function loadAshnaModels() {
-      const optgroup = document.getElementById("ashna-optgroup");
-      if (!optgroup || _ashnaCatalogLoaded) return;
-      _ashnaCatalogLoaded = true;  // prevent repeat fetches
-      try {
-        console.log("[ashna] Fetching /api/ashna-models...");
-        const res = await fetch("/api/ashna-models", { cache: "no-store" });
-        console.log("[ashna] Response status:", res.status);
-        if (!res.ok) {
-          console.warn("[ashna] Fetch failed with HTTP", res.status);
-          return;
-        }
-        const data = await res.json();
-        const models = (data && Array.isArray(data.models)) ? data.models : [];
-        console.log("[ashna] Got", models.length, "models", models.length > 0 ? "—" + models.map(m => m.id).join(", ") : "");
-        if (data.error) console.warn("[ashna] Server error:", data.error);
-        if (!models.length) {
-          console.warn("[ashna] No models available — hiding AshnaAI group. Check Vercel logs for [ashna-models] diagnostics.");
-          return;
-        }
-        optgroup.innerHTML = models.map(function(m) {
-          return '<option value="ashna:' + escapeHtml(m.id) + '">' + escapeHtml(m.displayName || m.id) + ' — Pro</option>';
-        }).join("");
-        optgroup.style.display = "";
-        console.log("[ashna] AshnaAI group populated and visible");
-      } catch (e) {
-        console.warn("[ashna] Couldn't load AshnaAI catalog:", e.message || e);
-      }
-    }
-    // Trigger the AshnaAI catalog fetch on page load
-    if (document.readyState !== "loading") loadAshnaModels();
-    else document.addEventListener("DOMContentLoaded", loadAshnaModels);
-
-    // --- OpenCode Zen + OpenRouter catalog loader (free-tier providers) ---
-    // Fetches /api/ai-providers on load. If OPENCODE_API_KEY is set, the OpenCode Zen
+    // --- OpenRouter catalog loader (free-tier provider) ---
+    // Fetches /api/ai-providers on load. If OPENROUTER_API_KEY is set, the OpenRouter
     // optgroup gets populated. If AGENTROUTER_API_KEY is set, the OpenRouter optgroup
     // gets populated. If neither is set, both stay hidden and Gemini is the default.
     let _aiProvidersLoaded = false;
@@ -3022,12 +2883,12 @@ Return ONLY the raw HTML:`;
         const providers = (data && Array.isArray(data.providers)) ? data.providers : [];
         console.log("[ai-providers] Got", providers.length, "providers:", providers.map(p => p.id).join(", "));
         for (const p of providers) {
-          const optgroupId = p.id === "opencode" ? "opencode-optgroup" : p.id === "openrouter" ? "openrouter-optgroup" : null;
+          const optgroupId = p.id === "openrouter" ? "openrouter-optgroup" : null;
           if (!optgroupId) continue;
           const optgroup = document.getElementById(optgroupId);
           if (!optgroup) continue;
           optgroup.innerHTML = p.models.map(function(m) {
-            return '<option value="' + p.id + ':' + escapeHtml(m.id) + '">' + escapeHtml(m.displayName || m.id) + ' — Pro</option>';
+            return '<option value="' + p.id + ':' + escapeHtml(m.id) + '">' + escapeHtml(m.displayName || m.id) + ' — Free</option>';
           }).join("");
           optgroup.style.display = "";
           console.log("[ai-providers] Populated", p.label, "with", p.models.length, "models");
