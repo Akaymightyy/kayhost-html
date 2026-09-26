@@ -2127,8 +2127,7 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
         if (q && text.toLowerCase().indexOf(q) < 0) continue;
         // Determine tier
         var t = "FREE", tc = "#22c55e";
-        
-        else if (val.indexOf("openrouter:") === 0) { t = "FREE"; tc = "#22c55e"; }
+        if (val.indexOf("openrouter:") === 0) { t = "FREE"; tc = "#22c55e"; }
         else if (val.indexOf("gemini-pro") === 0 || val.indexOf("claude") === 0 || val.indexOf("gpt") === 0) { t = "BYOK"; tc = "#3b82f6"; }
         var isSel = val === currentVal;
         html += '<div onclick="selectFloatingModel(\'' + val.replace(/'/g,"\\'") + '\')" style="display:flex;align-items:center;gap:6px;padding:4px 8px;cursor:pointer;font-size:10px;' + (isSel ? 'background:rgba(167,139,250,0.12);' : '') + '" onmouseover="this.style.background=\'var(--bg-elevated)\'" onmouseout="this.style.background=\'' + (isSel ? 'rgba(167,139,250,0.12)' : 'transparent') + '\'">' +
@@ -2171,8 +2170,7 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
         var opt = mainSelect.options[mainSelect.selectedIndex];
         var name = opt ? opt.textContent : val;
         var tier = "FREE", tc = "#22c55e";
-        
-        else if (val.indexOf("openrouter:") === 0) { tier = "FREE"; tc = "#22c55e"; }
+        if (val.indexOf("openrouter:") === 0) { tier = "FREE"; tc = "#22c55e"; }
         else if (val.indexOf("gemini-pro") === 0 || val.indexOf("claude") === 0 || val.indexOf("gpt") === 0) { tier = "BYOK"; tc = "#3b82f6"; }
         var span = bar.querySelector("span");
         if (span) span.textContent = name;
@@ -2796,6 +2794,7 @@ Return ONLY the raw HTML:`;
       if (!el) return;
       const modelChoice = document.getElementById("ai-model").value;
       // Server-side models (OpenRouter) — hide the free-usage badge.
+      if (modelChoice && modelChoice.indexOf("openrouter:") === 0) {
         el.style.display = "none";
         return;
       }
@@ -2836,21 +2835,6 @@ Return ONLY the raw HTML:`;
       const modelChoice = document.getElementById("ai-model").value;
       const row = document.getElementById("ai-byok-row");
       const saved = document.getElementById("ai-byok-saved");
-      // Server-side models (OpenRouter) — no BYOK needed
-        row.style.display = "none";
-        saved.style.display = "none";
-        const isPro = (window.kayhostUserPro === true) || (window.currentUser && window.currentUser.pro === true);
-        if (!isPro) {
-          document.getElementById("ai-model").value = "gemini";
-          if (typeof showProUpgrade === "function") {
-            showProUpgrade(providerName, providerName + " is a Pro-only AI provider. Upgrade to Pro to use it.");
-          } else {
-            toast(providerName + " is a Pro feature", "info");
-          }
-        }
-        renderUsageBadge();
-        return;
-      }
       // OpenRouter is FREE — no BYOK row, no Pro check, shows usage badge like Gemini
       if (modelChoice && modelChoice.indexOf("openrouter:") === 0) {
         row.style.display = "none";
