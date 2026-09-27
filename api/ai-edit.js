@@ -405,8 +405,21 @@ async function streamChatCompletion(providerId, model, systemPrompt, userPrompt,
     if (!res.ok) {
       let errBody = "";
       try { errBody = await res.text(); } catch (e) {}
-      const e = new Error(providerId + " HTTP " + res.status + (errBody ? ": " + errBody.slice(0, 200) : ""));
-      e.status = res.status === 429 ? 429 : 502;
+      console.error("[ai-edit:stream] " + providerId + " HTTP " + res.status + ":", errBody.slice(0, 500));
+      let msg;
+      let st;
+      if (res.status === 400) {
+        msg = "This page is too large for the selected AI model's context window. Try a smaller page, or use Gemini (which supports larger inputs).";
+        st = 413;
+      } else if (res.status === 429) {
+        msg = "This free model hit its daily limit — try another model from the dropdown.";
+        st = 429;
+      } else {
+        msg = providerId + " HTTP " + res.status + (errBody ? ": " + errBody.slice(0, 200) : "");
+        st = 502;
+      }
+      const e = new Error(msg);
+      e.status = st;
       throw e;
     }
     // Read the stream
