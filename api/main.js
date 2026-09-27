@@ -886,6 +886,15 @@ async function handleCloneMulti(req, res) {
     console.log("[clone-multi] Storage complete for project", projectId);
     const baseUrl = "https://" + req.headers.host;
     const projectUrl = baseUrl + "/p/" + projectId;
+    // Include the actual file contents in the done event so the frontend
+    // can load them into the editor with file tabs (instead of just opening
+    // the live URL in a new tab).
+    const filesForEditor = {};
+    for (const fp of Object.keys(files)) {
+      // Truncate to 500KB per page for the editor payload (the full content
+      // is already in Firestore — this is just for the editor preview)
+      filesForEditor[fp] = files[fp].slice(0, 500000);
+    }
     sendEvent("done", {
       projectId,
       url: projectUrl,
@@ -895,6 +904,7 @@ async function handleCloneMulti(req, res) {
       pageCount: Object.keys(files).length,
       warning,
       assetSummary: "Multi-page clone complete with " + Object.keys(files).length + " pages.",
+      files: filesForEditor,
     });
   } catch (err) {
     // Log the FULL technical error server-side for debugging — code, details, stack
