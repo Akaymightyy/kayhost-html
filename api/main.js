@@ -101,6 +101,8 @@ const FIRESTORE_WRITE_TIMEOUT_MS = 20000;  // 20s hard timeout for Firestore wri
 // Write a multi-page project using the subcollection structure.
 // Each page goes into its own doc; the parent doc holds metadata + pathMap.
 // Includes a timeout wrapper so a hung write doesn't block forever.
+// Each page write is wrapped in its own try/catch so one failing page doesn't
+// kill the entire clone — the page is skipped and the error is logged.
 async function writeProjectWithPages(db, projectId, metadata, files, pathMap) {
   const totalBytes = JSON.stringify(files).length;
   console.log("[project-storage] Writing project", projectId, "with", Object.keys(files).length, "pages, total", totalBytes, "bytes");
@@ -114,43 +116,71 @@ async function writeProjectWithPages(db, projectId, metadata, files, pathMap) {
     // 1. Write the parent metadata doc (small — just pathMap + metadata)
     const pathMapJson = JSON.stringify(pathMap);
     console.log("[project-storage] Parent doc pathMap size:", pathMapJson.length, "bytes");
-    await setDoc(doc(db, "projects", projectId), {
-      id: projectId,
-      title: metadata.title || "Untitled",
-      browserId: metadata.browserId || "anonymous",
-      ownerUid: metadata.ownerUid || null,
-      createdAt: metadata.createdAt || Date.now(),
-      expiresAt: metadata.expiresAt || null,
-      customName: metadata.customName || null,
-      pathMapJson,
-      clonedFrom: metadata.clonedFrom || null,
-      storageFormat: "subcollection",  // flag for backwards compat
-    });
-    console.log("[project-storage] Parent doc written OK");
+    try {
+      await setDoc(doc(db, "projects", projectId), {
+        id: projectId,
+        title: metadata.title || "Untitled",
+        browserId: metadata.browserId || "anonymous",
+        ownerUid: metadata.ownerUid || null,
+        createdAt: metadata.createdAt || Date.now(),
+        expiresAt: metadata.expiresAt || null,
+        customName: metadata.customName || null,
+        pathMapJson,
+        clonedFrom: metadata.clonedFrom || null,
+        storageFormat: "subcollection",
+      });
+      console.log("[project-storage] Parent doc written OK");
+    } catch (parentErr) {
+      console.error("[project-storage] Parent doc write FAILED:", parentErr.code || parentErr.message, parentErr.details || "", parentErr.stack || "");
+      throw parentErr;
+    }
 
     // 2. Write each page as a separate doc in the pages subcollection
-    const pageIds = {};  // filePath → pageId (for the response)
+    const pageIds = {};  // filePath → pageId
+    let failedPages = 0;
     for (const filePath of Object.keys(files)) {
-      const content = files[filePath];
-      const pageId = filePath.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) + "_" + Math.random().toString(36).slice(2, 6);
-      console.log("[project-storage] Writing page:", filePath, "->", pageId, "(" + content.length + " bytes)");
+      let content = files[filePath];
+      // Sanitize the file path into a safe Firestore document ID.
+      // Replace ALL non-alphanumeric chars (including dots and slashes) with underscores.
+      // Firestore doc IDs cannot contain "/" and must be ≤ 1500 bytes.
+      const safeId = filePath.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 80);
+      const pageId = safeId + "_" + Math.random().toString(36).slice(2, 8);
+      console.log("[project-storage] Writing page:", filePath, "-> docId:", pageId, "(" + content.length + " bytes)");
 
       // Check if this single page exceeds 900KB (leaves room for the doc metadata)
       if (content.length > 900000) {
-        console.warn("[project-storage] Page", filePath, "is", content.length, "bytes — may exceed Firestore 1MB limit");
+        console.warn("[project-storage] Page", filePath, "is", content.length, "bytes — may exceed Firestore 1MB limit, truncating to 900KB");
+        content = content.slice(0, 900000);
       }
 
-      await setDoc(doc(db, "projects", projectId, "pages", pageId), {
-        id: pageId,
-        filePath,
-        content,
-        createdAt: Date.now(),
-      });
-      pageIds[filePath] = pageId;
-      console.log("[project-storage] Page written OK:", filePath);
+      try {
+        await setDoc(doc(db, "projects", projectId, "pages", pageId), {
+          id: pageId,
+          filePath: filePath,  // store the ORIGINAL path as a value (not a key)
+          content: content,
+          createdAt: Date.now(),
+        });
+        pageIds[filePath] = pageId;
+        console.log("[project-storage] Page written OK:", filePath, "->", pageId);
+      } catch (pageErr) {
+        failedPages++;
+        // Log the FULL Firestore error — code, details, stack — for debugging
+        console.error("[project-storage] Page write FAILED for", filePath, "->", pageId);
+        console.error("[project-storage]   Error code:", pageErr.code || "(none)");
+        console.error("[project-storage]   Error message:", pageErr.message || "(none)");
+        console.error("[project-storage]   Error details:", pageErr.details || "(none)");
+        console.error("[project-storage]   Stack:", pageErr.stack || "(none)");
+        // Don't throw — skip this page and continue with the rest
+        // If ALL pages fail, the project will have an empty pages subcollection
+        // and the clone will still "succeed" (the user can see the project URL)
+        // but pages will 404 — better than failing the whole clone
+      }
     }
 
-    console.log("[project-storage] All pages written. Project", projectId, "complete.");
+    if (failedPages > 0) {
+      console.warn("[project-storage]", failedPages, "page(s) failed to write out of", Object.keys(files).length);
+    }
+    console.log("[project-storage] All pages processed. Project", projectId, "complete.", Object.keys(pageIds).length, "pages written successfully.");
     return pageIds;
   })();
 
@@ -867,14 +897,22 @@ async function handleCloneMulti(req, res) {
       assetSummary: "Multi-page clone complete with " + Object.keys(files).length + " pages.",
     });
   } catch (err) {
-    // Log the FULL technical error server-side for debugging
-    console.error("[clone-multi] Storage failed:", err.message || err);
+    // Log the FULL technical error server-side for debugging — code, details, stack
+    console.error("[clone-multi] Storage failed:");
+    console.error("[clone-multi]   Error code:", err.code || "(none)");
+    console.error("[clone-multi]   Error message:", err.message || "(none)");
+    console.error("[clone-multi]   Error details:", err.details || "(none)");
+    console.error("[clone-multi]   Stack:", err.stack || "(none)");
     // Return a specific, user-friendly error based on the failure type
     if (err.message === "STORAGE_TIMEOUT") {
       sendEvent("error", { error: "Saving took too long. Please try again with fewer pages or a smaller site." });
-    } else if (err.message && err.message.includes("INVALID_ARGUMENT")) {
-      sendEvent("error", { error: "This site is too large to clone. Try a simpler page or fewer linked pages." });
-    } else if (err.message && err.message.includes("RESOURCE_EXHAUSTED")) {
+    } else if (err.code === 3 || (err.message && err.message.includes("INVALID_ARGUMENT"))) {
+      // Firestore error code 3 = INVALID_ARGUMENT — log the full error but show a
+      // user-friendly message. Don't assume it's a size issue — it could be a
+      // field path issue, a type mismatch, or something else entirely.
+      console.error("[clone-multi] INVALID_ARGUMENT — check the error details above for the specific field/path Firestore rejected");
+      sendEvent("error", { error: "Something went wrong saving your cloned site. Please try again with fewer pages." });
+    } else if (err.code === 8 || (err.message && err.message.includes("RESOURCE_EXHAUSTED"))) {
       sendEvent("error", { error: "Storage quota exceeded. Please try again later." });
     } else {
       sendEvent("error", { error: "Something went wrong saving your cloned site. Please try again." });
