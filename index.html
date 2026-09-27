@@ -442,13 +442,123 @@
       width: 32px; height: 32px; border-radius: 50%; background: var(--purple);
       color: var(--bg); display: grid; place-items: center; font-weight: 700; font-size: 12px;
     }
-    @media (max-width: 640px) {
+    @media (max-width: 768px) {
       .nav-links { display: none; }
       .mobile-menu-btn {
         display: grid; place-items: center; width: 34px; height: 34px; border-radius: 7px;
         border: 1px solid var(--border); cursor: pointer; color: var(--fg-secondary);
         background: var(--bg-card);
       }
+    }
+
+    /* ===== Drag-and-drop element library sidebar ===== */
+    .element-sidebar {
+      display: none;
+      width: 260px;
+      flex-shrink: 0;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg-card);
+      overflow: hidden;
+      flex-direction: column;
+    }
+    .element-sidebar.open { display: flex; }
+    .element-sidebar-head {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+    }
+    .element-sidebar-tab {
+      flex: 1;
+      padding: 8px 4px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--fg-muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all .15s ease;
+      background: none;
+      border-top: none;
+      border-left: none;
+      border-right: none;
+      font-family: inherit;
+    }
+    .element-sidebar-tab.active {
+      color: var(--purple-text);
+      border-bottom-color: var(--purple);
+      background: rgba(167, 139, 250, 0.06);
+    }
+    .element-search {
+      width: 100%;
+      padding: 6px 8px;
+      border: none;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--fg);
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+    }
+    .element-list {
+      flex: 1;
+      overflow-y: auto;
+      max-height: 400px;
+      padding: 4px;
+    }
+    .element-category {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--fg-muted);
+      padding: 8px 6px 4px;
+    }
+    .element-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      cursor: grab;
+      font-size: 12px;
+      color: var(--fg-secondary);
+      transition: background .12s ease;
+      user-select: none;
+    }
+    .element-item:hover {
+      background: var(--bg-elevated);
+      color: var(--fg);
+    }
+    .element-item:active { cursor: grabbing; }
+    .element-item .el-icon {
+      width: 22px; height: 22px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 5px;
+      background: rgba(167, 139, 250, 0.1);
+      color: var(--purple-text);
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+    .element-sidebar-footer {
+      padding: 6px 8px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+    }
+    .element-sidebar-footer label {
+      display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--fg-muted);
+    }
+    .editor-with-sidebar {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .editor-main { flex: 1; min-width: 0; }
+    @media (max-width: 900px) {
+      .element-sidebar { width: 220px; }
+    }
+    @media (max-width: 768px) {
+      .editor-with-sidebar { flex-direction: column; }
+      .element-sidebar { width: 100%; max-height: 300px; }
     }
   </style>
 </head>
@@ -667,6 +777,23 @@
     </div>
 
     <section class="editor-section" id="editor-section">
+     <div class="editor-with-sidebar">
+      <!-- ===== Drag-and-drop element library sidebar ===== -->
+      <div class="element-sidebar" id="element-sidebar">
+        <div class="element-sidebar-head">
+          <button class="element-sidebar-tab active" data-tab="sections" onclick="switchElementTab('sections')">Sections</button>
+          <button class="element-sidebar-tab" data-tab="elements" onclick="switchElementTab('elements')">Elements</button>
+        </div>
+        <input type="text" class="element-search" id="element-search" placeholder="Search elements..." oninput="filterElements()">
+        <div class="element-list" id="element-list"></div>
+        <div class="element-sidebar-footer">
+          <label>
+            <input type="checkbox" id="ai-describe-on-drop">
+            <span>Ask me to describe AI-built elements when I drop them</span>
+          </label>
+        </div>
+      </div>
+      <div class="editor-main">
       <div class="editor-card">
         <div id="clone-links-bar" style="display:none;padding:10px 12px;margin-bottom:10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-elevated);">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -779,6 +906,8 @@
           </div>
         </div>
       </div>
+      </div><!-- /editor-main -->
+     </div><!-- /editor-with-sidebar -->
     </section>
 
     <!-- ===== Features ===== -->
@@ -1518,8 +1647,164 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
       textarea.addEventListener("change", () => saveDraft(currentHtml));
       showPreview();
       renderFileTabs();  // show the file-tabs bar with the "+" button
+      // Open the element sidebar when the editor opens
+      const sidebar = document.getElementById("element-sidebar");
+      if (sidebar) sidebar.classList.add("open");
+      renderElementLibrary();
       section.scrollIntoView({ behavior: "smooth" });
     }
+
+    // ===== Drag-and-drop element library =====
+    const ELEMENT_SECTIONS = [
+      { name: "Hero", icon: "H", html: '<section style="padding:60px 20px;text-align:center;"><h1 style="font-size:2.5rem;margin-bottom:16px;">Your Headline Here</h1><p style="font-size:1.1rem;color:#666;margin-bottom:24px;max-width:600px;margin-left:auto;margin-right:auto;">A short subtitle that describes what you do.</p><button style="padding:12px 32px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:1rem;cursor:pointer;">Get Started</button></section>' },
+      { name: "Hero+Image", icon: "HI", html: '<section style="display:flex;align-items:center;gap:40px;padding:60px 20px;flex-wrap:wrap;"><div style="flex:1;min-width:300px;"><h1 style="font-size:2.2rem;margin-bottom:16px;">Your Headline</h1><p style="color:#666;margin-bottom:24px;">Description text here.</p><button style="padding:12px 28px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;">Learn More</button></div><div style="flex:1;min-width:250px;"><img src="https://placehold.co/500x300" alt="" style="width:100%;border-radius:12px;"></div></section>' },
+      { name: "Features", icon: "F", html: '<section style="padding:60px 20px;"><h2 style="text-align:center;margin-bottom:40px;">Features</h2><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:24px;"><div style="text-align:center;"><div style="font-size:2rem;margin-bottom:8px;">⚡</div><h3 style="margin-bottom:8px;">Fast</h3><p style="color:#666;font-size:0.9rem;">Lightning quick performance.</p></div><div style="text-align:center;"><div style="font-size:2rem;margin-bottom:8px;">🔒</div><h3 style="margin-bottom:8px;">Secure</h3><p style="color:#666;font-size:0.9rem;">Bank-grade security built in.</p></div><div style="text-align:center;"><div style="font-size:2rem;margin-bottom:8px;">📱</div><h3 style="margin-bottom:8px;">Responsive</h3><p style="color:#666;font-size:0.9rem;">Works on every device.</p></div></div></section>' },
+      { name: "Pricing", icon: "$", html: '<section style="padding:60px 20px;"><h2 style="text-align:center;margin-bottom:40px;">Pricing</h2><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px;max-width:800px;margin:0 auto;"><div style="border:1px solid #ddd;border-radius:12px;padding:28px;text-align:center;"><h3 style="margin-bottom:8px;">Starter</h3><div style="font-size:2rem;font-weight:800;margin-bottom:16px;">$9</div><ul style="list-style:none;padding:0;margin-bottom:20px;font-size:0.9rem;color:#666;"><li>1 Project</li><li>5GB Storage</li><li>Email Support</li></ul><button style="width:100%;padding:10px;border:1px solid #6366f1;background:transparent;color:#6366f1;border-radius:8px;cursor:pointer;">Choose</button></div><div style="border:2px solid #6366f1;border-radius:12px;padding:28px;text-align:center;"><h3 style="margin-bottom:8px;">Pro</h3><div style="font-size:2rem;font-weight:800;margin-bottom:16px;">$29</div><ul style="list-style:none;padding:0;margin-bottom:20px;font-size:0.9rem;color:#666;"><li>Unlimited Projects</li><li>50GB Storage</li><li>Priority Support</li></ul><button style="width:100%;padding:10px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;">Choose</button></div></div></section>' },
+      { name: "Testimonials", icon: "T", html: '<section style="padding:60px 20px;background:#f9fafb;"><h2 style="text-align:center;margin-bottom:40px;">What People Say</h2><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;max-width:800px;margin:0 auto;"><div style="background:#fff;border-radius:12px;padding:24px;box-shadow:0 1px 3px rgba(0,0,0,0.1);"><p style="color:#555;margin-bottom:16px;">"Amazing product! Changed how we work."</p><div style="display:flex;align-items:center;gap:10px;"><div style="width:36px;height:36px;border-radius:50%;background:#6366f1;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;">J</div><div><div style="font-weight:600;font-size:0.9rem;">Jane Doe</div><div style="font-size:0.8rem;color:#999;">CEO, Acme</div></div></div></div><div style="background:#fff;border-radius:12px;padding:24px;box-shadow:0 1px 3px rgba(0,0,0,0.1);"><p style="color:#555;margin-bottom:16px;">"Best tool I have used all year."</p><div style="display:flex;align-items:center;gap:10px;"><div style="width:36px;height:36px;border-radius:50%;background:#6366f1;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;">S</div><div><div style="font-weight:600;font-size:0.9rem;">Sam Smith</div><div style="font-size:0.8rem;color:#999;">Dev, TechCo</div></div></div></div></div></section>' },
+      { name: "FAQ", icon: "?", html: '<section style="padding:60px 20px;max-width:700px;margin:0 auto;"><h2 style="text-align:center;margin-bottom:40px;">FAQ</h2><details style="border-bottom:1px solid #ddd;padding:16px 0;"><summary style="cursor:pointer;font-weight:600;">What is this?</summary><p style="color:#666;margin-top:8px;">This is a demo FAQ item. Click to expand.</p></details><details style="border-bottom:1px solid #ddd;padding:16px 0;"><summary style="cursor:pointer;font-weight:600;">How does it work?</summary><p style="color:#666;margin-top:8px;">Just drag and drop elements onto your page.</p></details><details style="border-bottom:1px solid #ddd;padding:16px 0;"><summary style="cursor:pointer;font-weight:600;">Is it free?</summary><p style="color:#666;margin-top:8px;">Yes! The basic plan is free forever.</p></details></section>' },
+      { name: "CTA", icon: "→", html: '<section style="padding:60px 20px;text-align:center;background:#6366f1;border-radius:16px;margin:20px;"><h2 style="color:#fff;margin-bottom:16px;">Ready to get started?</h2><p style="color:rgba(255,255,255,0.8);margin-bottom:24px;">Join thousands of happy users today.</p><button style="padding:14px 36px;background:#fff;color:#6366f1;border:none;border-radius:8px;font-size:1.1rem;font-weight:600;cursor:pointer;">Sign Up Free</button></section>' },
+      { name: "Footer", icon: "⋮", html: '<footer style="padding:40px 20px;border-top:1px solid #ddd;text-align:center;color:#999;font-size:0.85rem;"><p>&copy; 2026 Your Company. All rights reserved.</p></footer>' },
+      { name: "Newsletter", icon: "✉", html: '<section style="padding:40px 20px;text-align:center;max-width:500px;margin:0 auto;"><h3 style="margin-bottom:12px;">Subscribe to our newsletter</h3><p style="color:#666;margin-bottom:20px;">Get the latest updates straight to your inbox.</p><form style="display:flex;gap:8px;max-width:400px;margin:0 auto;"><input type="email" placeholder="your@email.com" style="flex:1;padding:10px 14px;border:1px solid #ddd;border-radius:8px;font-size:0.95rem;"><button type="submit" style="padding:10px 24px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;">Subscribe</button></form></section>' },
+    ];
+
+    const ELEMENTS = [
+      { cat: "Basic", name: "Heading", icon: "H", html: "<h1>Heading Text</h1>" },
+      { cat: "Basic", name: "Text Block", icon: "T", html: "<p>Your text goes here. Edit this paragraph to add your content.</p>" },
+      { cat: "Basic", name: "Button", icon: "B", html: '<button style="padding:10px 24px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;">Click Me</button>' },
+      { cat: "Basic", name: "Button Group", icon: "BG", html: '<div style="display:flex;gap:8px;"><button style="padding:10px 20px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;">Primary</button><button style="padding:10px 20px;border:1px solid #ddd;background:transparent;border-radius:8px;cursor:pointer;">Secondary</button></div>' },
+      { cat: "Basic", name: "Text Link", icon: "L", html: '<a href="#" style="color:#6366f1;text-decoration:underline;">Link text</a>' },
+      { cat: "Basic", name: "Icon", icon: "★", html: '<span style="font-size:1.5rem;">★</span>' },
+      { cat: "Basic", name: "Badge", icon: "b", html: '<span style="background:#6366f1;color:#fff;padding:2px 8px;border-radius:99px;font-size:0.75rem;font-weight:600;">New</span>' },
+      { cat: "Basic", name: "List", icon: "≡", html: "<ul>\n  <li>First item</li>\n  <li>Second item</li>\n  <li>Third item</li>\n</ul>" },
+      { cat: "Media", name: "Image", icon: "🖼", html: '<img src="https://placehold.co/400x300" alt="Description" style="max-width:100%;border-radius:8px;">' },
+      { cat: "Media", name: "Video", icon: "▶", html: '<video controls style="max-width:100%;border-radius:8px;"><source src="https://example.com/video.mp4" type="video/mp4"></video>' },
+      { cat: "Media", name: "Audio", icon: "♪", html: '<audio controls style="width:100%;"><source src="https://example.com/audio.mp3" type="audio/mpeg"></audio>' },
+      { cat: "Media", name: "Image Gallery", icon: "▦", html: '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;"><img src="https://placehold.co/200" alt="" style="width:100%;border-radius:8px;"><img src="https://placehold.co/200" alt="" style="width:100%;border-radius:8px;"><img src="https://placehold.co/200" alt="" style="width:100%;border-radius:8px;"><img src="https://placehold.co/200" alt="" style="width:100%;border-radius:8px;"></div>' },
+      { cat: "Media", name: "Embed", icon: "<>", html: '<div style="border:1px solid #ddd;border-radius:8px;padding:16px;text-align:center;color:#999;">Embedded content goes here (YouTube, Map, etc.)</div>' },
+      { cat: "Layout", name: "2 Column", icon: "▐▌", html: '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;"><div>Left column content</div><div>Right column content</div></div>' },
+      { cat: "Layout", name: "3 Column", icon: "▐▌▌", html: '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;"><div>Column 1</div><div>Column 2</div><div>Column 3</div></div>' },
+      { cat: "Layout", name: "Card", icon: "▢", html: '<div style="border:1px solid #ddd;border-radius:12px;padding:20px;max-width:350px;"><h3 style="margin-bottom:8px;">Card Title</h3><p style="color:#666;">Card description text goes here.</p></div>' },
+      { cat: "Layout", name: "Divider", icon: "—", html: '<hr style="border:none;border-top:1px solid #ddd;margin:20px 0;">' },
+      { cat: "Layout", name: "Spacer", icon: "⎵", html: '<div style="height:40px;"></div>' },
+      { cat: "Content", name: "Blockquote", icon: '"', html: '<blockquote style="border-left:4px solid #6366f1;padding-left:16px;margin:16px 0;color:#555;">"A meaningful quote goes here."</blockquote>' },
+      { cat: "Content", name: "Code Snippet", icon: "</>", html: '<pre style="background:#1e1e1e;color:#d4d4d4;padding:16px;border-radius:8px;overflow-x:auto;"><code>console.log("Hello World");</code></pre>' },
+      { cat: "Content", name: "Table", icon: "▦", html: '<table style="width:100%;border-collapse:collapse;"><thead><tr><th style="border:1px solid #ddd;padding:8px;">Name</th><th style="border:1px solid #ddd;padding:8px;">Value</th></tr></thead><tbody><tr><td style="border:1px solid #ddd;padding:8px;">Item 1</td><td style="border:1px solid #ddd;padding:8px;">100</td></tr><tr><td style="border:1px solid #ddd;padding:8px;">Item 2</td><td style="border:1px solid #ddd;padding:8px;">200</td></tr></tbody></table>' },
+      { cat: "Content", name: "Alert", icon: "!", html: '<div style="padding:12px 16px;border-radius:8px;background:#fef3c7;border:1px solid #f59e0b;color:#92400e;">⚠ Alert message goes here.</div>' },
+      { cat: "Content", name: "Accordion", icon: "∨", html: '<details style="border:1px solid #ddd;border-radius:8px;padding:12px;margin-bottom:8px;"><summary style="cursor:pointer;font-weight:600;">Accordion Item 1</summary><p style="margin-top:8px;color:#666;">Content goes here.</p></details><details style="border:1px solid #ddd;border-radius:8px;padding:12px;"><summary style="cursor:pointer;font-weight:600;">Accordion Item 2</summary><p style="margin-top:8px;color:#666;">More content here.</p></details>' },
+      { cat: "Content", name: "Stat", icon: "#", html: '<div style="text-align:center;"><div style="font-size:2.5rem;font-weight:800;color:#6366f1;">1,234</div><div style="color:#999;font-size:0.9rem;">Active Users</div></div>' },
+      { cat: "Content", name: "Progress Bar", icon: "▬", html: '<div style="width:100%;background:#e5e7eb;border-radius:99px;height:8px;overflow:hidden;"><div style="width:65%;background:#6366f1;height:100%;border-radius:99px;"></div></div>' },
+      { cat: "Content", name: "Star Rating", icon: "★", html: '<div style="font-size:1.2rem;color:#f59e0b;">★★★★☆</div>' },
+      { cat: "Forms", name: "Contact Form", icon: "✉", html: '<form style="max-width:400px;margin:0 auto;"><input type="text" placeholder="Name" style="width:100%;padding:10px;margin-bottom:10px;border:1px solid #ddd;border-radius:8px;"><input type="email" placeholder="Email" style="width:100%;padding:10px;margin-bottom:10px;border:1px solid #ddd;border-radius:8px;"><textarea placeholder="Message" rows="4" style="width:100%;padding:10px;margin-bottom:10px;border:1px solid #ddd;border-radius:8px;"></textarea><button type="submit" style="width:100%;padding:12px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;">Send</button></form>' },
+      { cat: "Forms", name: "Email Signup", icon: "@", html: '<form style="display:flex;gap:8px;max-width:400px;margin:0 auto;"><input type="email" placeholder="Enter your email" style="flex:1;padding:10px;border:1px solid #ddd;border-radius:8px;"><button type="submit" style="padding:10px 20px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;">Subscribe</button></form>' },
+      { cat: "Forms", name: "Search", icon: "🔍", html: '<form style="display:flex;gap:8px;"><input type="text" placeholder="Search..." style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;"><button type="submit" style="padding:8px 14px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;">Search</button></form>' },
+      { cat: "Forms", name: "Input Field", icon: "▭", html: '<input type="text" placeholder="Enter text..." style="padding:10px 14px;border:1px solid #ddd;border-radius:8px;width:100%;">' },
+      { cat: "Forms", name: "Text Area", icon: "▣", html: '<textarea placeholder="Enter your message..." rows="4" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;"></textarea>' },
+      { cat: "Forms", name: "Dropdown", icon: "∨", html: '<select style="padding:10px 14px;border:1px solid #ddd;border-radius:8px;width:100%;"><option>Option 1</option><option>Option 2</option><option>Option 3</option></select>' },
+      { cat: "Forms", name: "Checkbox", icon: "☑", html: '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox"> I agree to the terms</label>' },
+    ];
+
+    let _elementTab = "sections";
+    function switchElementTab(tab) {
+      _elementTab = tab;
+      document.querySelectorAll(".element-sidebar-tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
+      renderElementLibrary();
+    }
+    window.switchElementTab = switchElementTab;
+
+    function renderElementLibrary() {
+      const list = document.getElementById("element-list");
+      if (!list) return;
+      const search = (document.getElementById("element-search")?.value || "").toLowerCase();
+      const items = _elementTab === "sections" ? ELEMENT_SECTIONS : ELEMENTS;
+      // Group elements by category
+      if (_elementTab === "sections") {
+        const filtered = items.filter(e => e.name.toLowerCase().includes(search));
+        list.innerHTML = filtered.map(e =>
+          '<div class="element-item" draggable="true" data-html="' + encodeURIComponent(e.html) + '" data-name="' + escapeHtml(e.name) + '">' +
+          '<span class="el-icon">' + e.icon + '</span><span>' + escapeHtml(e.name) + '</span></div>'
+        ).join("");
+      } else {
+        const cats = {};
+        items.forEach(e => {
+          if (e.name.toLowerCase().includes(search)) {
+            if (!cats[e.cat]) cats[e.cat] = [];
+            cats[e.cat].push(e);
+          }
+        });
+        let html = "";
+        for (const cat of Object.keys(cats)) {
+          html += '<div class="element-category">' + escapeHtml(cat) + '</div>';
+          html += cats[cat].map(e =>
+            '<div class="element-item" draggable="true" data-html="' + encodeURIComponent(e.html) + '" data-name="' + escapeHtml(e.name) + '">' +
+            '<span class="el-icon">' + e.icon + '</span><span>' + escapeHtml(e.name) + '</span></div>'
+          ).join("");
+        }
+        list.innerHTML = html;
+      }
+      // Wire up drag events
+      list.querySelectorAll(".element-item").forEach(item => {
+        item.addEventListener("dragstart", function(e) {
+          e.dataTransfer.setData("text/plain", item.dataset.html);
+          e.dataTransfer.effectAllowed = "copy";
+        });
+      });
+    }
+    window.renderElementLibrary = renderElementLibrary;
+
+    function filterElements() {
+      renderElementLibrary();
+    }
+    window.filterElements = filterElements;
+
+    // Wire up drop zone on the preview iframe's parent
+    document.addEventListener("DOMContentLoaded", function() {
+      const previewWrap = document.getElementById("preview-wrap");
+      if (previewWrap) {
+        previewWrap.addEventListener("dragover", function(e) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          previewWrap.style.outline = "2px dashed var(--purple)";
+        });
+        previewWrap.addEventListener("dragleave", function() {
+          previewWrap.style.outline = "";
+        });
+        previewWrap.addEventListener("drop", async function(e) {
+          e.preventDefault();
+          previewWrap.style.outline = "";
+          const encodedHtml = e.dataTransfer.getData("text/plain");
+          if (!encodedHtml) return;
+          const droppedHtml = decodeURIComponent(encodedHtml);
+          const itemName = e.target?.dataset?.name || "element";
+          // Check if AI describe is enabled
+          const aiDescribe = document.getElementById("ai-describe-on-drop");
+          if (aiDescribe && aiDescribe.checked) {
+            const desc = prompt('Describe how you want this "' + itemName + '" to look:');
+            if (desc) {
+              // Use AI to customize the dropped element
+              const inst = 'Insert this ' + itemName + ' at the end of the body and customize it: ' + desc;
+              document.getElementById("ai-instruction").value = inst;
+              await applyAiEdit();
+              return;
+            }
+          }
+          // Insert the HTML before </body> (or at the end)
+          let html = document.getElementById("html-input").value;
+          if (html.includes("</body>")) {
+            html = html.replace("</body>", droppedHtml + "\n</body>");
+          } else {
+            html = html + "\n" + droppedHtml;
+          }
+          document.getElementById("html-input").value = html;
+          currentHtml = html;
+          if (_files.length > 0 && _activeFileIndex >= 0) {
+            _files[_activeFileIndex].content = html;
+          }
+          saveDraft(currentHtml);
+          updatePreview();
+          toast(itemName + " added to page", "success");
+        });
+      }
+    });
 
     // ===== Multi-file editor (htmlhost.co-style tabs) =====
     // The file-tabs bar is ALWAYS visible (with the "+" button). When there's
