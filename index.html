@@ -3307,12 +3307,18 @@ Return ONLY the raw HTML:`;
             _files.unshift(idxFile);
           }
           _activeFileIndex = 0;
-          // Load the first file into the editor
+          // Load the first file into the textarea
           document.getElementById("html-input").value = _files[0].content || "";
-          currentHtml = _files[0].content || "";
-          renderFileTabs();
-          showEditor();
+          // For the preview, use mergeFilesToHtml() if multiple files, otherwise just the content
+          currentHtml = (_files.length > 1) ? mergeFilesToHtml() : (_files[0].content || "");
+          // Clear any stale draft so showEditor() doesn't overwrite our cloned content
+          try { localStorage.removeItem("kayhost-draft"); } catch (e) {}
           saveDraft(currentHtml);
+          // Show the editor (this calls showPreview -> updatePreview internally)
+          showEditor();
+          // Explicitly update the preview with the merged HTML
+          updatePreview();
+          renderFileTabs();
           // Show the live URL + download option
           const result = document.getElementById("deploy-result");
           if (result) {
