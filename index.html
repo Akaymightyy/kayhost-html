@@ -3288,12 +3288,48 @@ Return ONLY the raw HTML:`;
         if (streamError) throw new Error(streamError);
         if (!finalData) throw new Error("No response from clone server.");
 
-        // Success — show the project URL
+        // Success — load the cloned pages into the editor with file tabs
         document.getElementById("clone-modal").classList.add("hidden");
         if (finalData.warning) toast(finalData.warning, "info");
         toast("Cloned " + finalData.pageCount + " pages from " + url, "success");
-        // Open the project URL in a new tab
-        window.open(finalData.url, "_blank");
+
+        // If the backend sent us the file contents, load them into the editor
+        if (finalData.files && Object.keys(finalData.files).length > 0) {
+          // Build the _files array from the files object
+          _files = [];
+          for (const fp of Object.keys(finalData.files)) {
+            _files.push({ name: fp, content: finalData.files[fp] });
+          }
+          // Make sure index.html is first (if it exists)
+          const idxIdx = _files.findIndex(f => f.name === "index.html" || f.name.endsWith("/index.html"));
+          if (idxIdx > 0) {
+            const [idxFile] = _files.splice(idxIdx, 1);
+            _files.unshift(idxFile);
+          }
+          _activeFileIndex = 0;
+          // Load the first file into the editor
+          document.getElementById("html-input").value = _files[0].content || "";
+          currentHtml = _files[0].content || "";
+          renderFileTabs();
+          showEditor();
+          saveDraft(currentHtml);
+          // Show the live URL + download option
+          const result = document.getElementById("deploy-result");
+          if (result) {
+            result.classList.remove("empty");
+            result.innerHTML = '<div class="link-box"><span>' + escapeHtml(finalData.url) + '</span><button class="copy-btn" onclick="navigator.clipboard.writeText(\'' + escapeHtml(finalData.url) + '\').then(() => toast(\'Copied\', \'success\'))">Copy</button></div><a class="btn btn-purple btn-block" href="' + escapeHtml(finalData.url) + '" target="_blank" rel="noopener" style="margin-top: 8px;">Open live page</a>';
+            result.classList.remove("revealed");
+            void result.offsetWidth;
+            result.classList.add("revealed");
+          }
+          if (finalData.assetSummary) {
+            setTimeout(function() { toast(finalData.assetSummary, "info"); }, 800);
+          }
+        } else {
+          // Fallback: if no files in the response, just open the live URL
+          window.open(finalData.url, "_blank");
+        }
+
         // Reset the progress UI
         progressDiv.style.display = "none";
         progressBar.style.width = "0%";
