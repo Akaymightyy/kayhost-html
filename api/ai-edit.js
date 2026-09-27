@@ -246,8 +246,8 @@ async function handleOpenRouterEdit(req, res, body) {
   if (!body.html || !body.instruction) {
     return res.status(400).json({ error: "html and instruction are required" });
   }
-  if (typeof body.html === "string" && body.html.length > 500_000) {
-    return res.status(413).json({ error: "HTML too large (max 500KB)" });
+  if (typeof body.html === "string" && body.html.length > 2_000_000) {
+    return res.status(413).json({ error: "HTML too large (max 2MB)" });
   }
   if (!body.model || typeof body.model !== "string") {
     return res.status(400).json({ error: "model ID is required" });
