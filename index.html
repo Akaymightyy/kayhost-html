@@ -443,22 +443,13 @@
       color: var(--bg); display: grid; place-items: center; font-weight: 700; font-size: 12px;
     }
     @media (max-width: 768px) {
-      .nav-links { display: none; }
-      .mobile-menu-btn {
-        display: grid; place-items: center; width: 34px; height: 34px; border-radius: 7px;
-        border: 1px solid var(--border); cursor: pointer; color: var(--fg-secondary);
-        background: var(--bg-card);
-      }
+      .nav-links { display: none !important; }
+      .mobile-menu-btn { display: grid !important; }
     }
-    /* JS-applied class for navbar collapse — works even when browser spoofs viewport width */
-    .nav-collapsed .nav-links { display: none !important; }
-    .nav-collapsed .mobile-menu-btn {
-      display: grid !important; place-items: center; width: 34px; height: 34px; border-radius: 7px;
-      border: 1px solid var(--border); cursor: pointer; color: var(--fg-secondary);
-      background: var(--bg-card);
+    @media (min-width: 769px) {
+      .nav-links { display: flex !important; }
+      .mobile-menu-btn { display: none !important; }
     }
-    .nav-not-collapsed .nav-links { display: flex !important; }
-    .nav-not-collapsed .mobile-menu-btn { display: none !important; }
 
     /* ===== Drag-and-drop element library sidebar ===== */
     .element-sidebar {
@@ -1534,50 +1525,6 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
     }
     window.openNavDrawer = openNavDrawer;
     window.closeNavDrawer = closeNavDrawer;
-
-    // ===== Navbar collapse: JS-based check (not just media query) =====
-    // Uses the actual available width of the header, not window.innerWidth.
-    // This works even when a phone browser uses "Desktop site" mode and
-    // reports a spoofed wider viewport — the header's real rendered width
-    // is what matters for whether the links fit.
-    function checkNavbarFit() {
-      const header = document.querySelector(".site-header");
-      if (!header) return;
-      const navLinks = document.getElementById("nav-links");
-      const mobileBtn = document.querySelector(".mobile-menu-btn");
-      if (!navLinks || !mobileBtn) return;
-      // Measure: temporarily show nav-links to measure their natural width
-      navLinks.style.display = "flex";
-      const navWidth = navLinks.scrollWidth;
-      const brandWidth = header.querySelector(".brand")?.scrollWidth || 100;
-      const actionsWidth = header.querySelector("#auth-area")?.parentElement?.scrollWidth || 120;
-      const headerWidth = header.scrollWidth;
-      const availableForNav = headerWidth - brandWidth - actionsWidth - 20; // 20px buffer
-      // If nav links don't fit in the available space, collapse
-      if (navWidth > availableForNav || availableForNav < 400) {
-        header.classList.add("nav-collapsed");
-        header.classList.remove("nav-not-collapsed");
-      } else {
-        header.classList.add("nav-not-collapsed");
-        header.classList.remove("nav-collapsed");
-      }
-    }
-    // Run on load, on resize, and on orientation change
-    if (document.readyState !== "loading") {
-      setTimeout(checkNavbarFit, 100);
-    } else {
-      document.addEventListener("DOMContentLoaded", function() { setTimeout(checkNavbarFit, 100); });
-    }
-    window.addEventListener("resize", function() { setTimeout(checkNavbarFit, 50); });
-    window.addEventListener("orientationchange", function() { setTimeout(checkNavbarFit, 200); });
-    // Also use ResizeObserver on the header itself for real-time detection
-    if (typeof ResizeObserver !== "undefined") {
-      const _navObserver = new ResizeObserver(function() { checkNavbarFit(); });
-      document.addEventListener("DOMContentLoaded", function() {
-        const header = document.querySelector(".site-header");
-        if (header) _navObserver.observe(header);
-      });
-    }
 
     function switchView(view, opts) {
       // Hide all views
