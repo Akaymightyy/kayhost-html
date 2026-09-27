@@ -450,6 +450,15 @@
         background: var(--bg-card);
       }
     }
+    /* JS-applied class for navbar collapse — works even when browser spoofs viewport width */
+    .nav-collapsed .nav-links { display: none !important; }
+    .nav-collapsed .mobile-menu-btn {
+      display: grid !important; place-items: center; width: 34px; height: 34px; border-radius: 7px;
+      border: 1px solid var(--border); cursor: pointer; color: var(--fg-secondary);
+      background: var(--bg-card);
+    }
+    .nav-not-collapsed .nav-links { display: flex !important; }
+    .nav-not-collapsed .mobile-menu-btn { display: none !important; }
 
     /* ===== Drag-and-drop element library sidebar ===== */
     .element-sidebar {
@@ -1525,6 +1534,50 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
     }
     window.openNavDrawer = openNavDrawer;
     window.closeNavDrawer = closeNavDrawer;
+
+    // ===== Navbar collapse: JS-based check (not just media query) =====
+    // Uses the actual available width of the header, not window.innerWidth.
+    // This works even when a phone browser uses "Desktop site" mode and
+    // reports a spoofed wider viewport — the header's real rendered width
+    // is what matters for whether the links fit.
+    function checkNavbarFit() {
+      const header = document.querySelector(".site-header");
+      if (!header) return;
+      const navLinks = document.getElementById("nav-links");
+      const mobileBtn = document.querySelector(".mobile-menu-btn");
+      if (!navLinks || !mobileBtn) return;
+      // Measure: temporarily show nav-links to measure their natural width
+      navLinks.style.display = "flex";
+      const navWidth = navLinks.scrollWidth;
+      const brandWidth = header.querySelector(".brand")?.scrollWidth || 100;
+      const actionsWidth = header.querySelector("#auth-area")?.parentElement?.scrollWidth || 120;
+      const headerWidth = header.scrollWidth;
+      const availableForNav = headerWidth - brandWidth - actionsWidth - 20; // 20px buffer
+      // If nav links don't fit in the available space, collapse
+      if (navWidth > availableForNav || availableForNav < 400) {
+        header.classList.add("nav-collapsed");
+        header.classList.remove("nav-not-collapsed");
+      } else {
+        header.classList.add("nav-not-collapsed");
+        header.classList.remove("nav-collapsed");
+      }
+    }
+    // Run on load, on resize, and on orientation change
+    if (document.readyState !== "loading") {
+      setTimeout(checkNavbarFit, 100);
+    } else {
+      document.addEventListener("DOMContentLoaded", function() { setTimeout(checkNavbarFit, 100); });
+    }
+    window.addEventListener("resize", function() { setTimeout(checkNavbarFit, 50); });
+    window.addEventListener("orientationchange", function() { setTimeout(checkNavbarFit, 200); });
+    // Also use ResizeObserver on the header itself for real-time detection
+    if (typeof ResizeObserver !== "undefined") {
+      const _navObserver = new ResizeObserver(function() { checkNavbarFit(); });
+      document.addEventListener("DOMContentLoaded", function() {
+        const header = document.querySelector(".site-header");
+        if (header) _navObserver.observe(header);
+      });
+    }
 
     function switchView(view, opts) {
       // Hide all views
@@ -2621,12 +2674,53 @@ curl -X POST -H "Authorization: Bearer kayh_..." \\
         iframe.style.width = "100%";
         iframe.style.minHeight = "100vh";
         if (exitBtn) exitBtn.style.display = "block";
+        // Keep the AI panel visible in fullscreen as a floating overlay
+        const aiPanel = document.getElementById("ai-panel");
+        const aiOverlay = document.getElementById("ai-overlay");
+        if (aiPanel) {
+          aiPanel.style.position = "fixed";
+          aiPanel.style.bottom = "0";
+          aiPanel.style.right = "16px";
+          aiPanel.style.zIndex = "10001";
+          aiPanel.style.maxWidth = "360px";
+          aiPanel.style.width = "calc(100vw - 32px)";
+          aiPanel.style.maxHeight = "60vh";
+          aiPanel.style.boxShadow = "0 -4px 24px rgba(0,0,0,0.4)";
+        }
+        if (aiOverlay) {
+          aiOverlay.style.zIndex = "10000";
+        }
+        // Also keep the floating edit box visible in fullscreen
+        const floatBox = document.getElementById("floating-edit-box");
+        if (floatBox) {
+          floatBox.style.zIndex = "10001";
+        }
       } else {
         if (wrap) { wrap.style.position = ""; wrap.style.inset = ""; wrap.style.zIndex = ""; wrap.style.background = ""; }
         if (exitBtn) exitBtn.style.display = "none";
         if (mode === "desktop") { iframe.style.width = "100%"; iframe.style.minHeight = "360px"; }
         else if (mode === "tablet") { iframe.style.width = "768px"; iframe.style.minHeight = "500px"; }
         else if (mode === "phone") { iframe.style.width = "375px"; iframe.style.minHeight = "600px"; }
+        // Reset AI panel styles back to normal
+        const aiPanel = document.getElementById("ai-panel");
+        const aiOverlay = document.getElementById("ai-overlay");
+        if (aiPanel) {
+          aiPanel.style.position = "";
+          aiPanel.style.bottom = "";
+          aiPanel.style.right = "";
+          aiPanel.style.zIndex = "";
+          aiPanel.style.maxWidth = "";
+          aiPanel.style.width = "";
+          aiPanel.style.maxHeight = "";
+          aiPanel.style.boxShadow = "";
+        }
+        if (aiOverlay) {
+          aiOverlay.style.zIndex = "";
+        }
+        const floatBox = document.getElementById("floating-edit-box");
+        if (floatBox) {
+          floatBox.style.zIndex = "";
+        }
       }
     };
 
