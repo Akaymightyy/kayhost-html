@@ -1,367 +1,299 @@
-# kayhost-mcp
+# Kayhost HTML — Paste HTML. Get a link.
 
-MCP server + CLI for [kayhost-html](https://kayhosthtml.zone.id) — deploy HTML sites, manage them, and edit with AI from any MCP-compatible client (Claude Code, Cursor, Codex, Antigravity, Windsurf, Cline, VS Code, GitHub Copilot).
+Dead-simple HTML hosting. Paste HTML, get a live link in seconds. Multi-provider AI-powered visual editor included.
 
-```
-npm i -g kayhost-mcp
-```
+**Current version: v44** — see `Changelog` section below.
 
-## What it gives you
+## What's new in v44
 
-Once installed, your AI agent can:
-
-- **Deploy HTML** — "deploy this folder to kayhost" → returns a live URL
-- **List your sites** — "what sites do I have on kayhost?"
-- **Delete a site** — "delete site abc123"
-- **Fetch site HTML** — "show me the HTML of my portfolio site"
-- **AI-edit elements** — "change the heading on my landing page to say 'Welcome'"
-- **Clone a URL** — "clone https://example.com so I can edit it"
-- **Upload media** — "upload logo.png to my media library"
-
-All seven operations are exposed as MCP tools that any MCP client can call.
-
-## Quick start
-
-### 1. Install
-
-```bash
-npm i -g kayhost-mcp
-```
-
-Requires Node.js 18+. Verify with:
-
-```bash
-kayhost --help
-```
-
-### 2. (Optional) Log in
-
-Without logging in, you deploy in **anonymous mode** — sites are tracked to a persistent `browserId` stored in `~/.kayhost/config.json`. This works fine for trying things out, but you can't delete sites and your deploys aren't tied to an account.
-
-To associate deploys with your kayhost-html account:
-
-1. Go to **https://kayhosthtml.zone.id → API Tokens → Create new token**
-2. Copy the token (starts with `kayh_`)
-3. Run:
-
-   ```bash
-   kayhost login --token kayh_xxxxxxxxxxxxxxxx
-   ```
-
-3. Verify:
-
-   ```bash
-   kayhost whoami
-   # Logged in as: kayh_xxxx...xxxx
-   # API base:     https://kayhosthtml.zone.id
-   ```
-
-### 3a. Use the CLI directly
-
-```bash
-# Deploy a single file
-kayhost deploy index.html --title "My landing page" --ttl 30d
-
-# Deploy with a custom slug
-kayhost deploy portfolio.html --slug my-portfolio --ttl never
-
-# List your sites
-kayhost list
-
-# Fetch raw HTML of a deployed site
-kayhost get abc123 > site.html
-
-# Delete a site (requires login)
-kayhost delete abc123
-```
-
-### 3b. Use from your AI agent (MCP)
-
-Pick your client below and follow the setup. After setup, you can ask things like:
-
-- *"Deploy the current folder to kayhost and give me the link."*
-- *"Make the hero heading on my kayhost site bigger and purple."*
-- *"Clone example.com and re-deploy it as my own site."*
+1. **Multi-provider AI editor** — the visual HTML editor is no longer Gemini-only. Three additional provider families now appear in the model dropdown:
+   - **AshnaAI** (Pro-only) — `lib/ashna.js` + `/api/ashna-models.js`. Per-user 50/day cap tracked in Firestore `ashnaUsage`. Model list is the intersection of an admin allowlist (`ASHNA_ALLOWED_MODELS` env var) and the live Ashna `/models` response, cached 10 min.
+   - **OpenCode Zen** (Pro-only) — `lib/ai-providers.js`. Static catalog of 5 models: DeepSeek V4 Flash, MiMo V2.5, Qwen 3.6 Plus, MiniMax M3, Big Pickle. Per-user 50/day cap in Firestore `providerUsage`.
+   - **OpenRouter** (Free, not Pro-gated) — dynamic free-model fetching. Hits OpenRouter's live `/models` endpoint, filters for `pricing.prompt === "0" && pricing.completion === "0"`, sorts by context length, caches the top 10 for 30 min. Falls back to 3 hardcoded stable IDs if the live fetch fails. Shares the same browser-id 50/day cap as Gemini (each provider has its own counter).
+2. **JSON-parse-first response handling** — all OpenAI-compatible providers (OpenRouter, OpenCode Zen, AshnaAI) now parse the upstream response as JSON FIRST, and only fall back to "is this an HTML error page?" detection when `JSON.parse` genuinely throws. Previously, a successful HTML edit whose content contained `<!doctype html>` or `<html>` would false-positive as a gateway error and block every edit. Applied to `lib/ai-providers.js` and `lib/ashna.js`.
+3. **Redesigned click-to-edit AI UX** — replaced the old "click AI button → full panel → type → apply" flow with a floating edit box anchored near the clicked element:
+   - Appears automatically when you click any element in the preview iframe (`wireElementClicks` in `index.html`)
+   - Shows the element's tag name, DOM breadcrumb, and context-aware quick actions
+   - Compact model-selector bar with tier badge (FREE / PRO / BYOK), expandable to a searchable list
+   - Stays visible above the mobile keyboard via the `visualViewport` API (repositions on resize)
+   - Works in all preview modes (desktop / tablet / phone / fullscreen)
+   - "Entire page" button to switch to whole-document editing
+4. **Compact anchored model-selector dropdown** — the old full-screen model picker is gone. The floating box has a single-line model bar showing the current model name + tier badge; tapping it expands a searchable list with all available models from all providers. Selected model gets a checkmark.
+5. **Responsive preview modes** — Desktop / Tablet / Phone / Fullscreen toggle buttons above the preview iframe. Fullscreen has a floating exit button.
+6. **Consolidated API** — the old separate function files (`api/deploy.js`, `api/sites.js`, `api/media.js`, `api/clone.js`, `api/save-user.js`, `api/settings.js`, `api/signin.js`, `api/paystack-verify.js`) have been merged into `api/main.js` (routes via `?route=`) and `api/auth.js` (signin/signup). The frontend URLs (`/api/deploy`, `/api/signin`, etc.) are unchanged — `vercel.json` rewrites them transparently.
+7. **Firebase Admin SDK** — `lib/admin-firebase.js` initializes `firebase-admin` for server-side ID token verification (used by the AshnaAI and OpenCode Zen Pro-gating). Requires `FIREBASE_SERVICE_ACCOUNT_KEY` env var (the full JSON key from Firebase Console → Project Settings → Service Accounts → Generate new private key).
+8. **Edge Middleware** — `middleware.js` blocks scraper User-Agents (wget, curl, httrack, scrapy, python-requests, etc.) and empty/too-short UAs at the edge before any function runs. Returns 403 immediately. ⚠️ **Note:** the middleware STILL blocks cross-origin referers (section 4 of `middleware.js`). If you need to embed Kayhost in an iframe on another domain, you'll need to remove or relax that block.
+9. **Paystack payment verification** — `api/main.js` route `paystack-verify` calls Paystack's verify endpoint to confirm Pro payments. Requires `PAYSTACK_SECRET_KEY` env var.
+10. **AI loading UX** — the Apply button now shows a visible status banner (purple "Generating…" → green "OK" → red "!" on error) inside the AI panel. The panel is locked from closing while a request is in flight (`_aiLoading` flag). The floating edit box also shows its own inline loading state.
+11. **Free quota raised to 50/day per provider** — Gemini and OpenRouter each get their own independent 50/day counter (previously shared a single 10/day counter). Pro providers (AshnaAI, OpenCode Zen) remain at 50/day per user.
+12. **AshnaAI test suite** — `test/ashna.test.js` with stubs for Firebase + Google GenAI, covering model allowlist parsing, display-name generation, and the JSON-parse-first response handler.
 
 ---
 
-## Client setup
+## Setup
 
-### Claude Code
-
-Run in your terminal (one-time setup, available in every project):
+### 1. Install + Firestore rules
 
 ```bash
-claude mcp add --scope user kayhost -- npx -y kayhost-mcp@latest
-```
-
-Or, if you prefer a per-project setup, run inside the project directory:
-
-```bash
-claude mcp add kayhost -- npx -y kayhost-mcp@latest
-```
-
-Then in Claude Code: *"Deploy this folder to kayhost and give me the link."*
-
-### Claude Desktop
-
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
-
-```json
-{
-  "mcpServers": {
-    "kayhost": {
-      "command": "npx",
-      "args": ["-y", "kayhost-mcp@latest"]
-    }
-  }
-}
-```
-
-Restart Claude Desktop. The kayhost tools will appear in the tool palette.
-
-### Cursor
-
-`Settings → MCP → Add MCP server`:
-
-- **Name:** `kayhost`
-- **Type:** `stdio`
-- **Command:** `npx -y kayhost-mcp@latest`
-
-Or add to `~/.cursor/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "kayhost": {
-      "command": "npx",
-      "args": ["-y", "kayhost-mcp@latest"]
-    }
-  }
-}
-```
-
-### Codex (OpenAI)
-
-Add to `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.kayhost]
-command = "npx"
-args = ["-y", "kayhost-mcp@latest"]
-```
-
-### VS Code (with Cline or Continue)
-
-For **Cline**: `Settings → MCP Servers → Add`:
-
-```json
-{
-  "mcpServers": {
-    "kayhost": {
-      "command": "npx",
-      "args": ["-y", "kayhost-mcp@latest"],
-      "env": {}
-    }
-  }
-}
-```
-
-### Antigravity
-
-Add the MCP server via Antigravity's settings UI, or edit `~/.antigravity/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "kayhost": {
-      "command": "npx",
-      "args": ["-y", "kayhost-mcp@latest"]
-    }
-  }
-}
-```
-
-### Windsurf
-
-Edit `~/.codeium/windsurf/mcp_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "kayhost": {
-      "command": "npx",
-      "args": ["-y", "kayhost-mcp@latest"]
-    }
-  }
-}
-```
-
-### GitHub Copilot Chat (VS Code)
-
-Copilot's MCP support is still rolling out — see the [VS Code MCP docs](https://code.visualstudio.com/docs/copilot/chat/mcp-servers). Add the same `mcpServers` block to your VS Code `settings.json` under `chat.mcp.servers`.
-
----
-
-## Environment variables (optional)
-
-Both the CLI and MCP server honor these env vars — they override the config file:
-
-| Variable | Purpose | Default |
-|---|---|---|
-| `KAYHOST_TOKEN` | Bearer token (`kayh_...`) | none (anonymous mode) |
-| `KAYHOST_API_BASE` | API base URL | `https://kayhosthtml.zone.id` |
-
-Useful for CI / ephemeral environments where you don't want a config file:
-
-```bash
-KAYHOST_TOKEN=kayh_xxx npx kayhost deploy ./dist --ttl 30d
-```
-
----
-
-## Config file
-
-Located at `~/.kayhost/config.json`, mode `0600`. Schema:
-
-```json
-{
-  "apiBaseUrl": "https://kayhosthtml.zone.id",
-  "token": "kayh_xxxxxxxxxxxxxxxx",
-  "defaultTtl": "7d",
-  "browserId": "94188824-55f5-4595-b425-9b5d8c1246f4"
-}
-```
-
-Inspect with `kayhost config`. Token is redacted in the output.
-
----
-
-## Tools reference
-
-All seven MCP tools exposed by this server:
-
-### `kayhost_deploy`
-
-Deploy an HTML page to kayhost and get a live HTTPS shareable URL.
-
-| Param | Type | Required | Description |
-|---|---|---|---|
-| `html` | string | yes | Full HTML document |
-| `title` | string | no | Page title (max 200 chars) |
-| `ttl` | `"1d"` \| `"7d"` \| `"30d"` \| `"never"` | no | Time-to-live. Defaults to config's `defaultTtl` (7d) |
-| `slug` | string | no | Custom URL slug, 3-30 chars: lowercase, numbers, hyphens |
-
-### `kayhost_list_sites`
-
-List all sites owned by the authenticated token (or, in anonymous mode, all sites tracked to this machine's `browserId`). No parameters.
-
-### `kayhost_delete_site`
-
-Delete a deployed site by id. **Bearer-token mode only** — anonymous deploys can only be removed by waiting for their TTL to expire.
-
-| Param | Type | Required | Description |
-|---|---|---|---|
-| `id` | string | yes | Site id (use `kayhost_list_sites` to find it) |
-
-### `kayhost_get_site`
-
-Fetch the raw HTML of a deployed kayhost site by its id.
-
-| Param | Type | Required | Description |
-|---|---|---|---|
-| `id` | string | yes | Site id |
-
-### `kayhost_ai_edit`
-
-Edit a specific element in an HTML page using AI. Returns the full modified HTML. Chain with `kayhost_deploy` to publish.
-
-| Param | Type | Required | Description |
-|---|---|---|---|
-| `html` | string | yes | Current full HTML of the page |
-| `selector` | string | yes | CSS selector for the element to edit |
-| `instruction` | string | yes | Natural-language change description (max 2000 chars) |
-| `apiKey` | string | no | BYOK API key (Gemini / OpenAI / Anthropic) |
-| `provider` | `"gemini"` \| `"openai"` \| `"anthropic"` | no | Provider hint when `apiKey` is supplied |
-
-### `kayhost_clone`
-
-Fetch a live web page's HTML (and optionally linked pages on the same domain) so it can be edited and re-deployed. Server-side SSRF-protected and respects robots.txt.
-
-| Param | Type | Required | Description |
-|---|---|---|---|
-| `url` | string | yes | Full http(s) URL of the page to clone |
-| `crawl` | boolean | no | If true, also crawl up to 10 linked pages on the same domain. Default `false`. |
-
-### `kayhost_upload_media`
-
-Upload an image file from disk to kayhost's Cloudinary media library. Returns a permanent URL.
-
-| Param | Type | Required | Description |
-|---|---|---|---|
-| `path` | string | yes | Absolute path to the image file (PNG/JPG/GIF/WebP/SVG) |
-
----
-
-## Development
-
-```bash
-git clone https://github.com/Akaymightyy/kayhost-html.git
-cd kayhost-html/packages/kayhost-mcp
+cd kayhost
 npm install
-npm run build
-npm run start:mcp   # starts the MCP server (stdio)
-npm run start:cli   # runs the CLI
 ```
 
-### Project layout
+Firebase Console → Firestore → Rules → paste:
 
 ```
-kayhost-mcp/
-├── package.json
-├── tsconfig.json
-├── src/
-│   ├── mcp-server.ts         # MCP server entry — stdio transport
-│   ├── cli.ts                # CLI entry — kayhost command
-│   ├── api-client.ts         # HTTP client wrapping REST endpoints
-│   ├── tools.ts              # MCP tool definitions + zod schemas
-│   ├── config.ts             # ~/.kayhost/config.json read/write
-│   └── zod-to-json-schema.ts # zod → JSON Schema bridge
-├── examples/
-│   └── sample-site.html      # for testing deploy
-└── README.md
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /sites/{siteId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if true;
+    }
+    match /users/{uid} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+    }
+    match /admins/{uid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow delete: if request.auth != null;
+    }
+    match /audit/{logId} {
+      allow read: if true;
+      allow create: if true;
+    }
+    match /templates/{templateId} {
+      allow read: if true;
+      allow write: if true;
+    }
+    match /settings/{key} {
+      allow read: if true;
+      allow write: if true;
+    }
+    match /flagged/{flagId} {
+      allow read: if true;
+      allow write: if true;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
 ```
 
-### Publishing
+**Important:** These rules apply only to the **client** SDK. The Vercel serverless functions in `/api/` use the Firebase Admin SDK via `lib/admin-firebase.js` (for token verification) and `lib/firebase.js` (for Firestore reads/writes), which bypasses rules — that's how `api/main.js`, `api/admin.js`, and `api/auth.js` can write to `users` / `templates` / `settings` even when no `request.auth` is present.
+
+**Also enable sign-in providers:**
+- Firebase Console → Authentication → Sign-in method
+- Enable **Email/Password** (for admin login with `kayhost@admin.com`)
+- Enable **Google** (add support email)
+- Enable **GitHub** (you'll need a GitHub OAuth App — see Firebase docs)
+
+**Create the admin account in Firebase Console:**
+- Authentication → Users → Add User
+- Email: `kayhost@admin.com`
+- Password: `363438`
+- This email is hardcoded as admin in `index.html` (`ADMIN_EMAILS` constant) and trusted by `api/admin.js`
+
+**Add your domain to authorized domains:**
+- Authentication → Settings → Authorized domains
+- Add `kayhosthtml.zone.id` (or whatever your custom domain is)
+- Add `your-project.vercel.app` (your Vercel URL)
+- Without this, Google/GitHub sign-in will fail with a 400 error on your custom domain
+
+### 2. Cloudinary (for image uploads)
+
+Cloudinary is configured with hardcoded credentials in `api/main.js` (the `media` route):
+```js
+const CLOUDINARY_CLOUD_NAME = "dbmtqgs3v";
+const CLOUDINARY_UPLOAD_PRESET = "kayhost";
+```
+Replace these with your own if you want image uploads on your own deployment.
+
+### 3. Environment variables (Vercel)
+
+Set these in Vercel → Project → Settings → Environment Variables:
+
+| Var | Required for | Notes |
+|---|---|---|
+| `GEMINI_API_KEY` | Gemini AI edits | Get from https://aistudio.google.com/apikey (current format starts with `AQ.`) |
+| `OPENCODE_API_KEY` | OpenCode Zen models (Pro) | Get from https://opencode.ai |
+| `OPENROUTER_API_KEY` | OpenRouter free models | Get from https://openrouter.ai |
+| `ASHNA_API_KEY` | AshnaAI models (Pro) | Get from AshnaAI |
+| `ASHNA_ALLOWED_MODELS` | AshnaAI model filtering | Comma-separated model IDs the admin has approved |
+| `ASHNA_DEFAULT_MODEL` | AshnaAI default (optional) | Must also be in the allowlist |
+| `ASHNA_DAILY_LIMIT` | AshnaAI per-user cap (optional) | Default: 50 |
+| `PROVIDER_DAILY_LIMIT` | OpenCode Zen per-user cap (optional) | Default: 50 |
+| `FIREBASE_SERVICE_ACCOUNT_KEY` | Pro-gating (token verification) | Full JSON from Firebase Console → Project Settings → Service Accounts → Generate new private key |
+| `PAYSTACK_SECRET_KEY` | Pro payment verification | Get from Paystack dashboard |
+
+### 4. Deploy
 
 ```bash
-npm version patch
-npm publish
+vercel --prod
 ```
 
-The `prepublishOnly` script runs `tsc` so the `dist/` is always up to date.
+Or: push to GitHub → import to Vercel → done.
 
 ---
 
-## FAQ
+## What's hardcoded (no env vars)
 
-**Q: Do I need a kayhost-html account?**
-A: No. Without a token, the CLI/MCP server uses anonymous mode — sites are tracked to a persistent `browserId` in `~/.kayhost/config.json`. To delete sites or see them in your web dashboard, log in with `kayhost login --token kayh_...`.
+- `lib/firebase.js` — Firebase client config (public, safe to expose)
+- `api/main.js` — Cloudinary cloud name + upload preset
+- `api/auth.js` — Firebase API key (public, same as `lib/firebase.js`)
 
-**Q: Does this work with self-hosted kayhost-html?**
-A: Yes. Set `KAYHOST_API_BASE=https://your-instance.example.com` or run `kayhost login --token kayh_... --api-base https://your-instance.example.com`.
+⚠️ Use a **private** GitHub repo if you push the code (so nobody can read your server-side keys).
 
-**Q: Why does the User-Agent look like a browser?**
-A: kayhost-html's edge layer 403s non-browser UAs as an anti-bot measure. The CLI sends a Chrome UA with `kayhost-mcp/0.1.0` appended for log attribution. The proper fix is to allowlist `kayhost-mcp/*` UAs on the kayhost-html server side.
+## How to get your Gemini API key
 
-**Q: Can I deploy multi-page sites?**
-A: Not yet via this package — the current kayhost-html REST API only supports single-page deploys. Multi-page directory deploy is on the roadmap (see the wacz-archive-breakdown doc, Tier S item S3).
+1. Go to https://aistudio.google.com/apikey
+2. Create a key (current format starts with `AQ.`)
+3. Set it as the `GEMINI_API_KEY` Vercel env var
 
-**Q: How are tokens stored?**
-A: In `~/.kayhost/config.json` with file mode `0600`. Never sent anywhere except the kayhost-html API as a `Bearer` header.
+`api/ai-edit.js` tries these model names in order: `gemini-flash-latest` → `gemini-2.5-flash` → `gemini-3-flash-preview` → `gemini-3.1-flash-lite`, with a single 503-retry per model, so when Google deprecates one model the fallback kicks in automatically.
 
 ---
 
-## License
+## Admin access
 
-MIT © Akaymightyy
+- **Triple-click the logo** in the top-left of `index.html` → sign-in modal opens
+- Sign in with `kayhost@admin.com` / `363438` (or with a Google/GitHub account whose email is in `ADMIN_EMAILS`)
+- Admin dashboard has 8 sections:
+  1. **Overview** — sites/users counts, 30-day deploy chart
+  2. **Users** — list, suspend / unsuspend, Make Pro / Remove Pro, Make admin (deduped by email in v14)
+  3. **Sites** — list, delete, view
+  4. **Templates** — add (paste OR upload .html file), delete
+  5. **Moderation** — flagged sites (placeholder for now)
+  6. **Health** — API status, recent errors
+  7. **Audit** — last 100 admin actions
+  8. **Settings** — feature flags + **Chat Widget** code (Tawk.to / Crisp / Intercom)
+
+## Chat widget (Tawk.to)
+
+1. Go to https://dashboard.tawk.to → sign in
+2. Admin → Channels → [your property] → **Code**
+3. Copy the entire `<script>...</script>` snippet (with your property ID in the URL)
+4. Triple-click the Kayhost logo → sign in as admin → Settings → **Chat Widget (Tawk.to / Crisp / Intercom)**
+5. Paste the snippet into the textarea → **Save widget code**
+6. Reload the site — the chat widget now loads on every page
+
+To remove: open Settings → Chat Widget → **Clear**.
+
+---
+
+## Pro tier
+
+- **Price:** ₦10,000 / 2 months (covers 30-day TTL + Never-expiry TTL gating + AshnaAI + OpenCode Zen models)
+- **How to mark a user Pro:** Admin → Users → find the user → **Make Pro** (or user pays via Paystack — the `paystack-verify` route in `api/main.js` verifies the transaction and sets `pro: true` on the user doc)
+- Pro users get:
+  - "Never expires" TTL option in the deploy form
+  - AshnaAI models in the AI editor (50/day per user)
+  - OpenCode Zen models in the AI editor (50/day per user)
+- Free users get: Gemini (50/day per browser) + OpenRouter (50/day per browser) + BYOK (unlimited, own key)
+
+---
+
+## Sign-in methods
+
+- **Google** — popup (uses Firebase Auth SDK)
+- **GitHub** — popup (uses Firebase Auth SDK)
+- **Email / Password** — server-side via `/api/auth?route=signin` which calls the Firebase REST API directly. This bypasses reCAPTCHA + domain restrictions. Error messages are user-friendly ("Connection error. Please try again." / "Invalid email or password." / "Too many attempts. Please wait a few minutes and try again.")
+
+After successful Google/GitHub sign-in, `/api/main?route=save-user` writes the user profile to Firestore `users` collection. It MERGES duplicates by email — if you signed in previously with email/password (different UID), the Google/GitHub sign-in will repoint the doc to the new UID and delete the old one.
+
+---
+
+## AI editor — model tiers
+
+| Tier | Providers | Daily limit | How to unlock |
+|---|---|---|---|
+| **FREE** | Gemini 2.5 Flash, OpenRouter (dynamic free models) | 50/day each per browser | Just use it — no signup needed |
+| **PRO** | AshnaAI, OpenCode Zen (DeepSeek V4 Flash, MiMo V2.5, Qwen 3.6 Plus, MiniMax M3, Big Pickle) | 50/day each per user | Upgrade to Pro (₦10,000 / 2 months) |
+| **BYOK** | Gemini Pro, Claude Haiku/Sonnet/Opus, GPT-4.1 mini, GPT-5.5 | Unlimited | Paste your own API key in Settings → AI API Keys (stored in browser only, never sent to server) |
+
+---
+
+## PWA / Service worker
+
+- `sw.js` is a self-destructing service worker — it unregisters itself on fetch. This was added in v7 to clear out the old caching SW that was serving stale content.
+- `manifest.json` makes the app installable.
+
+---
+
+## File map
+
+```
+kayhost/
+├── index.html              # SPA: all views, auth, admin dashboard, AI editor UI
+├── middleware.js           # Edge middleware — blocks scraper User-Agents + cross-origin referers
+├── vercel.json             # SPA rewrites + /api route consolidation + security headers
+├── package.json            # firebase + firebase-admin + @google/genai
+├── sw.js                   # Self-destructing service worker (clears old cache)
+├── manifest.json           # PWA manifest
+├── svarna-template.html    # Starter template
+├── README.md               # This file
+├── icon.png, icon-192.png, icon-512.png, favicon.png, favicon.ico, apple-touch-icon.png
+│
+├── api/
+│   ├── main.js             # Consolidated dispatcher — deploy/sites/media/clone/save-user/settings/user-profile/paystack-verify/site (via ?route=)
+│   ├── auth.js             # Consolidated auth — signin/signup (via ?route=)
+│   ├── admin.js            # Admin dashboard GET data + POST actions
+│   ├── ai-edit.js          # AI HTML editor — Gemini + OpenRouter (free) + AshnaAI + OpenCode Zen (Pro)
+│   ├── ai-providers.js     # PUBLIC endpoint — returns enabled AI providers + dynamic OpenRouter model list
+│   ├── ashna-models.js     # PUBLIC endpoint — returns AshnaAI model catalog (Pro)
+│   ├── serve.js            # Static asset serving helper
+│   └── site/[id].js        # Serve a deployed site by ID (rewritten to /api/main?route=site)
+│
+├── lib/
+│   ├── firebase.js         # Client-side Firebase init (public config)
+│   ├── admin-firebase.js   # Server-side Firebase Admin SDK init (requires FIREBASE_SERVICE_ACCOUNT_KEY)
+│   ├── ai-providers.js     # Shared config for OpenCode Zen + OpenRouter — model catalogs, dynamic fetching, callProvider()
+│   └── ashna.js            # Shared AshnaAI logic — model allowlist, display names, callAshnaChat(), validateAndExtractHtml()
+│
+└── test/
+    ├── ashna.test.js       # Unit tests for lib/ashna.js (allowlist parsing, display names, JSON-parse-first)
+    └── stubs/              # Test stubs for firebase-app, firestore, genai
+```
+
+---
+
+## Features
+
+- ✅ **Paste & Deploy** — paste HTML → get live URL in seconds
+- ✅ **Auto-Expiry** — 1d / 7d / 30d / Never (Never is Pro-only)
+- ✅ **Multi-provider AI Visual Editor** — click any element → describe change → AI rewrites HTML. Supports Gemini (free), OpenRouter (free, dynamic model list), AshnaAI (Pro), OpenCode Zen (Pro), and BYOK (Claude / GPT / your own Gemini key)
+- ✅ **Click-to-edit floating box** — anchored near the clicked element, works without opening the full AI panel, stays above mobile keyboard, works in all preview modes
+- ✅ **Compact model selector** — searchable dropdown with tier badges (FREE / PRO / BYOK) and selected-model checkmark
+- ✅ **Responsive preview modes** — Desktop / Tablet / Phone / Fullscreen
+- ✅ **Loading state UX** — visible status banner during AI generation (purple → green → red), panel locks during requests
+- ✅ **Dashboard** — list your pages with expiry countdown
+- ✅ **Image Uploads** — via Cloudinary
+- ✅ **Multi-file site upload** — drag a folder → Kayhost merges into one HTML
+- ✅ **Clone from URL** — paste any URL → fetch → editable copy (SSRF-protected)
+- ✅ **Sign in** — Google, GitHub, or email/password
+- ✅ **Admin dashboard** — 8 sections including chat-widget config
+- ✅ **Chat widget** — admin-configurable, supports Tawk.to / Crisp / Intercom / any
+- ✅ **Template management** — paste OR upload .html file
+- ✅ **Paystack payments** — Pro upgrade via Paystack (verified server-side)
+- ✅ **Edge middleware** — blocks scraper bots before any function runs
+- ✅ **Theme toggle** — light / dark
+- ✅ **PWA installable**
+
+---
+
+## Changelog
+
+- **v44** (this release) — Multi-provider AI editor (AshnaAI, OpenCode Zen, OpenRouter); JSON-parse-first response handling; redesigned click-to-edit floating box; compact searchable model selector with tier badges; responsive preview modes (desktop/tablet/phone/fullscreen); consolidated API into `api/main.js` + `api/auth.js`; Firebase Admin SDK for Pro-gating; Paystack payment verification; edge middleware for scraper blocking; AI loading UX (status banner + panel lock); free quota raised to 50/day per provider; AshnaAI test suite.
+- **v15** — Preview iframe sandbox fix (`allow-scripts`); public Templates view fetches admin-saved templates; AI editor model list fixed (`gemini-flash-latest` / `2.5-flash` / `2.0-flash`); 45s client-side AI timeout; clone URL 8s timeout + actual error messages; chat-widget console logging.
+- **v14** — Chat widget admin config; HTML file upload in Templates; duplicate users deep fix (merge by email in save-user.js + dedupe on display).
+- **v13** — Patch release for `signin.js` (clean error messages).
+- **v12** — Firestore rules rewrite to allow server-side writes to `users` / `templates` / `settings` (no `request.auth` on server).
+- **v11** — Gemini SDK switch to `@google/genai`; deprecated model fallback list + 503 retry.
+- **v10** — Removed duplicate `escapeHtml` (real fix for sign-in modal disappearing in ESM strict mode).
+- **v9** — Gemini model fallback, Clone SSRF protection, brand polish.
+- **v8** — Google + GitHub sign-in, admin dashboard (7 sections), template management, suspend/pro controls.
+- **v5–v7** — Self-destructing service worker (caching SW was serving stale content), admin API body fix.
+- **v1–v4** — Initial release: paste HTML, deploy, get link, AI editor, Cloudinary. Critical `</script>` inside JS string bug fixed.
