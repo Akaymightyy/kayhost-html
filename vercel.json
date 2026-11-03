@@ -1,7 +1,10 @@
 {
   "functions": {
     "api/ai-edit.js": { "maxDuration": 60 },
-    "api/main.js": { "maxDuration": 300 }
+    "api/ai-generate.js": { "maxDuration": 60 },
+    "api/main.js": { "maxDuration": 300 },
+    "api/forms.js": { "maxDuration": 30 },
+    "api/custom-domains.js": { "maxDuration": 30 }
   },
   "headers": [
     {
@@ -22,6 +25,12 @@
     },
     {
       "source": "/api/(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/form/(.*)",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
       ]
@@ -54,6 +63,18 @@
     { "source": "/p/:id", "destination": "/api/main?route=multi-serve" },
     { "source": "/p/:id/", "destination": "/api/main?route=multi-serve" },
     { "source": "/p/:id/:path*", "destination": "/api/main?route=multi-serve" },
+
+    { "source": "/api/ai-generate", "destination": "/api/ai-generate.js" },
+    { "source": "/api/ai-generate/:path*", "destination": "/api/ai-generate.js" },
+
+    { "source": "/form/:siteId", "destination": "/api/forms.js?route=submit&siteId=:siteId" },
+    { "source": "/api/forms/:siteId/submissions", "destination": "/api/forms.js?route=list&siteId=:siteId" },
+    { "source": "/api/forms/:siteId/:submissionId", "destination": "/api/forms.js?route=delete&siteId=:siteId&submissionId=:submissionId" },
+
+    { "source": "/api/custom-domains", "destination": "/api/custom-domains.js" },
+    { "source": "/api/custom-domains/verify", "destination": "/api/custom-domains.js?verify=1" },
+    { "source": "/api/custom-domains/:id", "destination": "/api/custom-domains.js?id=:id" },
+
     { "source": "/api/signin", "destination": "/api/auth?route=signin" },
     { "source": "/api/signup", "destination": "/api/auth?route=signup" },
     { "source": "/api/admin", "destination": "/api/admin.js" },
@@ -61,6 +82,6 @@
     { "source": "/__/auth/:catch*", "destination": "/index.html" },
     { "source": "/admin", "destination": "/index.html" },
     { "source": "/:slug([a-z0-9][a-z0-9-]{1,28}[a-z0-9])", "destination": "/api/main?route=site-resolve&slug=:slug" },
-    { "source": "/((?!api|site|p|_next|sw.js|manifest.json|icon|favicon|apple|robots|svarna-template|__).*)", "destination": "/index.html" }
+    { "source": "/((?!api|site|p|form|_next|sw.js|manifest.json|icon|favicon|apple|robots|svarna-template|__).*)", "destination": "/index.html" }
   ]
 }

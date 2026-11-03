@@ -1,0 +1,67 @@
+// firestore-rules.txt — Updated Firestore Security Rules for kayhost-html
+//
+// Apply these in Firebase Console → Firestore Database → Rules → Paste → Publish
+//
+// NEW collections added (compared to your existing rules):
+//   - formSubmissions: public WRITE (anyone can submit a form), owner-only READ
+//   - customDomains: owner-only READ/WRITE (uses uid field)
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===== Existing collections (keep your current rules) =====
+
+    // sites — your existing rule
+    match /sites/{id} {
+      // Keep whatever you currently have here.
+      // The rules below are ADDITIONS — don't replace your existing sites rule.
+      allow read: if true; // public reads (sites are public by URL)
+      allow write: if request.auth != null || request.resource.data.browserId != null;
+    }
+
+    // users — your existing rule
+    match /users/{uid} {
+      allow read: if request.auth.uid == uid;
+      allow write: if request.auth.uid == uid;
+    }
+
+    // templates — your existing rule (admin-only writes, public reads)
+    match /templates/{id} {
+      allow read: if true;
+      allow write: if false; // admin-only via Admin SDK
+    }
+
+    // settings — your existing rule
+    match /settings/{id} {
+      allow read: if true;
+      allow write: if false; // admin-only
+    }
+
+    // aiUsage — your existing rule (server-only writes, no client reads)
+    match /aiUsage/{id} {
+      allow read, write: if false; // server-only via Admin SDK
+    }
+
+    // ===== NEW: formSubmissions =====
+    // Public WRITE (anyone can submit a form without signing in)
+    // Owner-only READ (only the site owner can view submissions)
+    match /formSubmissions/{submissionId} {
+      allow create: if true;  // anyone can submit
+      allow read, update, delete: if false;  // server-only via Admin SDK + verifyRequestToken
+    }
+
+    // ===== NEW: customDomains =====
+    // Owner-only via verifyRequestToken (server-side)
+    match /customDomains/{domainId} {
+      allow read, write: if false;  // server-only via Admin SDK
+    }
+
+    // ===== NEW: projects (for multi-page sites) =====
+    // Same as sites — public read, browserId-or-auth write
+    match /projects/{id} {
+      allow read: if true;
+      allow write: if request.auth != null || request.resource.data.browserId != null;
+    }
+  }
+}
