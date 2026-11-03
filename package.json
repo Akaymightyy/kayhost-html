@@ -1,59 +1,11 @@
 {
-  "name": "kayhost-mcp",
-  "version": "0.1.0",
-  "description": "MCP server + CLI for kayhost-html — deploy HTML sites, manage them, and edit with AI from any MCP-compatible client (Claude Code, Cursor, Codex, Antigravity, Windsurf, Cline).",
-  "type": "module",
-  "main": "dist/mcp-server.js",
-  "bin": {
-    "kayhost-mcp": "dist/mcp-server.js",
-    "kayhost": "dist/cli.js"
-  },
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "start:mcp": "node dist/mcp-server.js",
-    "start:cli": "node dist/cli.js",
-    "prepublishOnly": "npm run build",
-    "clean": "rm -rf dist"
-  },
-  "keywords": [
-    "mcp",
-    "model-context-protocol",
-    "html-hosting",
-    "kayhost",
-    "claude",
-    "cursor",
-    "codex",
-    "antigravity",
-    "static-site",
-    "deploy"
-  ],
-  "license": "MIT",
-  "author": "Akaymightyy",
-  "homepage": "https://kayhosthtml.zone.id",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Akaymightyy/kayhost-html.git",
-    "directory": "packages/kayhost-mcp"
-  },
-  "bugs": {
-    "url": "https://github.com/Akaymightyy/kayhost-html/issues"
-  },
-  "engines": {
-    "node": ">=18.17.0"
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
+  "name": "kayhost-html",
+  "version": "1.0.0",
+  "description": "Instant HTML hosting with AI-powered visual editor",
+  "private": true,
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.4",
-    "zod": "^3.23.8",
-    "zod-to-json-schema": "^3.23.5"
-  },
-  "devDependencies": {
-    "@types/node": "^22.10.0",
-    "typescript": "^5.6.3"
+    "firebase": "^10.12.2",
+    "firebase-admin": "^12.7.0",
+    "@google/genai": "^1.0.0"
   }
 }
