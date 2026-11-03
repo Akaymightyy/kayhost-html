@@ -1,0 +1,364 @@
+<!-- ============================================================
+     PATCH FILE — add this code to index.html
+     WHERE: Paste this whole block right before the closing </body> tag.
+
+     WHAT THIS ADDS:
+       1. AI Generate button (next to "New site" button)
+       2. Multi-page folder upload (replaces single-file input behavior when folder is dropped)
+       3. Forms snippet generator (in the editor toolbar)
+       4. Custom domains settings (in the dashboard, per-site)
+     ============================================================ -->
+
+<!-- ====== 1. AI GENERATE MODAL ====== -->
+<div id="ai-generate-modal" class="hidden" style="position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this) closeAiGenerate()">
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:16px;max-width:560px;width:100%;padding:28px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <h3 style="font-size:18px;font-weight:700;margin:0;display:flex;align-items:center;gap:8px;">
+        <span style="color:var(--purple);">✨</span> Generate site with AI
+      </h3>
+      <button onclick="closeAiGenerate()" style="background:none;border:none;color:var(--fg-secondary);cursor:pointer;font-size:20px;">×</button>
+    </div>
+    <p style="color:var(--fg-secondary);font-size:13px;line-height:1.5;margin-bottom:16px;">
+      Describe the website you want. AI will generate a complete HTML page you can edit and deploy.
+    </p>
+    <textarea id="ai-generate-prompt" placeholder="Build a portfolio for my design and development projects, with case studies, a little about me, and a contact form. Use warm neutrals, large typography, and plenty of breathing room." style="width:100%;min-height:120px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--fg);font-family:inherit;font-size:14px;resize:vertical;margin-bottom:12px;"></textarea>
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+      <button class="ai-gen-example" onclick="document.getElementById('ai-generate-prompt').value='Build a landing page for a coffee shop called Brew & Co. Warm earth tones, hero image of coffee, menu section, opening hours, and a contact form.'" style="padding:6px 12px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;color:var(--fg-secondary);font-size:12px;cursor:pointer;">Coffee shop</button>
+      <button class="ai-gen-example" onclick="document.getElementById('ai-generate-prompt').value='Build a personal portfolio for a frontend developer. Dark theme, projects grid, about me, skills, and a contact form.'" style="padding:6px 12px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;color:var(--fg-secondary);font-size:12px;cursor:pointer;">Dev portfolio</button>
+      <button class="ai-gen-example" onclick="document.getElementById('ai-generate-prompt').value='Build a wedding invitation site for Ade & Bola, December 14, 2026 in Lagos. Romantic pastels, event details, RSVP form, and gallery.'" style="padding:6px 12px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;color:var(--fg-secondary);font-size:12px;cursor:pointer;">Wedding invite</button>
+      <button class="ai-gen-example" onclick="document.getElementById('ai-generate-prompt').value='Build a small business website for a Lagos-based fashion brand. Bold typography, product showcase, about, and contact form.'" style="padding:6px 12px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;color:var(--fg-secondary);font-size:12px;cursor:pointer;">Fashion brand</button>
+    </div>
+    <div id="ai-generate-status" style="display:none;padding:10px 14px;background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.3);border-radius:8px;color:var(--purple-text);font-size:13px;margin-bottom:12px;">Generating…</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button onclick="closeAiGenerate()" style="padding:10px 16px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--fg);font-size:14px;cursor:pointer;">Cancel</button>
+      <button id="ai-generate-btn" onclick="runAiGenerate()" style="padding:10px 16px;background:var(--purple);border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">Generate</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 2. FORMS SNIPPET MODAL ====== -->
+<div id="forms-snippet-modal" class="hidden" style="position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this) closeFormsSnippet()">
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:16px;max-width:600px;width:100%;padding:28px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <h3 style="font-size:18px;font-weight:700;margin:0;">📥 Add a contact form</h3>
+      <button onclick="closeFormsSnippet()" style="background:none;border:none;color:var(--fg-secondary);cursor:pointer;font-size:20px;">×</button>
+    </div>
+    <p style="color:var(--fg-secondary);font-size:13px;line-height:1.5;margin-bottom:16px;">
+      Paste this snippet into your HTML. Submissions are stored in your dashboard and (optionally) emailed to you. No backend needed.
+    </p>
+    <input id="forms-snippet-siteid" placeholder="Your site ID (e.g. abc123)" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--fg);font-size:14px;margin-bottom:12px;" oninput="updateFormsSnippet()">
+    <pre id="forms-snippet-code" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;overflow:auto;font-size:12px;font-family:monospace;color:var(--fg-secondary);max-height:240px;white-space:pre-wrap;"><!-- Paste this inside your <body> -->
+<form action="https://kayhosthtml.zone.id/form/YOUR_SITE_ID" method="POST" accept-charset="UTF-8">
+  <input type="hidden" name="_redirect" value="https://yoursite.com/thanks">
+
+  <!-- Honeypot — leave this empty, bots fill it automatically -->
+  <input type="text" name="_gotcha" style="display:none !important" tabindex="-1" autocomplete="off">
+
+  <label>Your name
+    <input type="text" name="name" required>
+  </label>
+  <label>Your email
+    <input type="email" name="email" required>
+  </label>
+  <label>Message
+    <textarea name="message" rows="4" required></textarea>
+  </label>
+  <button type="submit">Send message</button>
+</form></pre>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+      <button onclick="copyFormsSnippet()" style="padding:10px 16px;background:var(--purple);border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">Copy snippet</button>
+      <button onclick="closeFormsSnippet()" style="padding:10px 16px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--fg);font-size:14px;cursor:pointer;">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 3. CUSTOM DOMAINS MODAL ====== -->
+<div id="custom-domains-modal" class="hidden" style="position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this) closeCustomDomains()">
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:16px;max-width:560px;width:100%;padding:28px;max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <h3 style="font-size:18px;font-weight:700;margin:0;">🌐 Custom domain</h3>
+      <button onclick="closeCustomDomains()" style="background:none;border:none;color:var(--fg-secondary);cursor:pointer;font-size:20px;">×</button>
+    </div>
+    <p style="color:var(--fg-secondary);font-size:13px;line-height:1.5;margin-bottom:16px;">
+      Connect your own domain (e.g. <code>mybrand.com</code>) to this site. Pro feature.
+    </p>
+    <input id="cf-domain-input" placeholder="mybrand.com" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--fg);font-size:14px;margin-bottom:12px;">
+    <button onclick="addCustomDomain()" style="width:100%;padding:10px;background:var(--purple);border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:20px;">Connect domain</button>
+    <div id="cf-domains-list" style="display:flex;flex-direction:column;gap:12px;"></div>
+  </div>
+</div>
+
+<!-- ====== 4. JAVASCRIPT (paste at end of <script> or in new <script> tag) ====== -->
+<script>
+// ====== AI GENERATE ======
+function openAiGenerate() {
+  document.getElementById('ai-generate-modal').classList.remove('hidden');
+  document.getElementById('ai-generate-modal').style.display = 'flex';
+}
+function closeAiGenerate() {
+  document.getElementById('ai-generate-modal').classList.add('hidden');
+  document.getElementById('ai-generate-modal').style.display = 'none';
+  document.getElementById('ai-generate-status').style.display = 'none';
+}
+async function runAiGenerate() {
+  const prompt = document.getElementById('ai-generate-prompt').value.trim();
+  if (!prompt || prompt.length < 10) { alert('Please describe your site (min 10 chars)'); return; }
+
+  const btn = document.getElementById('ai-generate-btn');
+  const status = document.getElementById('ai-generate-status');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  status.style.display = 'block';
+  status.style.background = 'rgba(167,139,250,0.1)';
+  status.style.color = 'var(--purple-text)';
+  status.textContent = 'Generating… this can take 10-30 seconds.';
+
+  try {
+    const browserId = localStorage.getItem('kayhostBrowserId') || 'anon';
+    const resp = await fetch('/api/ai-generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, browserId, provider: 'gemini' }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Failed');
+
+    status.style.background = 'rgba(34,197,94,0.1)';
+    status.style.color = '#22c55e';
+    status.textContent = 'Generated! Loading into editor…';
+
+    // Load into the editor (assumes your SPA has a function like setEditorHtml)
+    if (typeof window.setEditorHtml === 'function') {
+      window.setEditorHtml(data.html);
+    } else if (typeof window.loadHtmlIntoEditor === 'function') {
+      window.loadHtmlIntoEditor(data.html);
+    } else {
+      // Fallback: store in localStorage and switch to editor view
+      localStorage.setItem('pendingGeneratedHtml', data.html);
+      window.location.hash = '#/new';
+      setTimeout(() => {
+        const ta = document.querySelector('#html-input, textarea[name="html"]');
+        if (ta) ta.value = data.html;
+      }, 300);
+    }
+    setTimeout(closeAiGenerate, 1500);
+  } catch (e) {
+    status.style.background = 'rgba(248,113,113,0.1)';
+    status.style.color = '#f87171';
+    status.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Generate';
+  }
+}
+
+// ====== FORMS SNIPPET ======
+function openFormsSnippet(siteId) {
+  document.getElementById('forms-snippet-modal').classList.remove('hidden');
+  document.getElementById('forms-snippet-modal').style.display = 'flex';
+  if (siteId) {
+    document.getElementById('forms-snippet-siteid').value = siteId;
+    updateFormsSnippet();
+  }
+}
+function closeFormsSnippet() {
+  document.getElementById('forms-snippet-modal').classList.add('hidden');
+  document.getElementById('forms-snippet-modal').style.display = 'none';
+}
+function updateFormsSnippet() {
+  const siteId = document.getElementById('forms-snippet-siteid').value.trim() || 'YOUR_SITE_ID';
+  const code = `<!-- Paste this inside your <body> -->
+<form action="https://kayhosthtml.zone.id/form/${siteId}" method="POST" accept-charset="UTF-8">
+  <input type="hidden" name="_redirect" value="https://yoursite.com/thanks">
+
+  <!-- Honeypot — leave this empty, bots fill it automatically -->
+  <input type="text" name="_gotcha" style="display:none !important" tabindex="-1" autocomplete="off">
+
+  <label>Your name
+    <input type="text" name="name" required>
+  </label>
+  <label>Your email
+    <input type="email" name="email" required>
+  </label>
+  <label>Message
+    <textarea name="message" rows="4" required></textarea>
+  </label>
+  <button type="submit">Send message</button>
+</form>`;
+  document.getElementById('forms-snippet-code').textContent = code;
+}
+function copyFormsSnippet() {
+  const code = document.getElementById('forms-snippet-code').textContent;
+  navigator.clipboard.writeText(code).then(() => {
+    alert('Copied! Paste this inside your HTML <body>.');
+  });
+}
+
+// ====== CUSTOM DOMAINS ======
+let _cfCurrentSiteId = null;
+function openCustomDomains(siteId) {
+  _cfCurrentSiteId = siteId;
+  document.getElementById('custom-domains-modal').classList.remove('hidden');
+  document.getElementById('custom-domains-modal').style.display = 'flex';
+  loadCustomDomains();
+}
+function closeCustomDomains() {
+  document.getElementById('custom-domains-modal').classList.add('hidden');
+  document.getElementById('custom-domains-modal').style.display = 'none';
+}
+async function loadCustomDomains() {
+  const list = document.getElementById('cf-domains-list');
+  list.innerHTML = '<p style="color:var(--fg-muted);font-size:13px;">Loading…</p>';
+  try {
+    const token = localStorage.getItem('kayhostIdToken');
+    if (!token) { list.innerHTML = '<p style="color:var(--fg-muted);font-size:13px;">Sign in to manage custom domains.</p>'; return; }
+    const resp = await fetch('/api/custom-domains', {
+      headers: { 'Authorization': 'Bearer ' + token },
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error);
+    if (!data.domains || data.domains.length === 0) {
+      list.innerHTML = '<p style="color:var(--fg-muted);font-size:13px;">No custom domains yet.</p>';
+      return;
+    }
+    list.innerHTML = data.domains.map(d => `
+      <div style="padding:14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <strong style="font-size:14px;">${d.domain}</strong>
+          <span style="font-size:11px;padding:2px 8px;border-radius:4px;background:${d.status === 'verified' ? 'rgba(34,197,94,0.15)' : d.status === 'failed' ? 'rgba(248,113,113,0.15)' : 'rgba(245,158,11,0.15)'};color:${d.status === 'verified' ? '#22c55e' : d.status === 'failed' ? '#f87171' : '#f59e0b'};">${d.status}</span>
+        </div>
+        ${d.status === 'pending' ? `
+          <div style="font-size:12px;color:var(--fg-secondary);line-height:1.5;margin-top:8px;">
+            <p style="margin:4px 0;"><strong>DNS records to add:</strong></p>
+            <p style="margin:2px 0;">1. CNAME: <code>${d.domain}</code> → <code>${d.cnameTarget}</code></p>
+            <p style="margin:2px 0;">2. TXT: <code>@</code> → <code>${d.txtRecord}</code></p>
+            <button onclick="verifyCustomDomain('${d.id}')" style="margin-top:8px;padding:6px 12px;background:var(--purple);border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer;">Verify now</button>
+          </div>
+        ` : ''}
+        ${d.status === 'failed' && d.failureReason ? `<p style="font-size:12px;color:#f87171;margin-top:6px;">${d.failureReason}</p>` : ''}
+        ${d.status === 'verified' ? `<p style="font-size:12px;color:#22c55e;margin-top:6px;">Live! Visiting <code>${d.domain}</code> serves this site.</p>` : ''}
+        <button onclick="deleteCustomDomain('${d.id}')" style="margin-top:8px;padding:4px 10px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--fg-muted);font-size:11px;cursor:pointer;">Remove</button>
+      </div>
+    `).join('');
+  } catch (e) {
+    list.innerHTML = '<p style="color:#f87171;font-size:13px;">' + e.message + '</p>';
+  }
+}
+async function addCustomDomain() {
+  const domain = document.getElementById('cf-domain-input').value.trim().toLowerCase();
+  if (!domain) { alert('Enter a domain'); return; }
+  if (!_cfCurrentSiteId) { alert('No site selected'); return; }
+  try {
+    const token = localStorage.getItem('kayhostIdToken');
+    if (!token) { alert('Sign in first'); return; }
+    const resp = await fetch('/api/custom-domains', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ siteId: _cfCurrentSiteId, domain }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error);
+    alert(`Domain added! Add these DNS records:\n\n1. CNAME: ${domain} → ${data.cnameTarget}\n2. TXT: @ → ${data.txtRecord}\n\nThen click "Verify now".`);
+    document.getElementById('cf-domain-input').value = '';
+    loadCustomDomains();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+async function verifyCustomDomain(id) {
+  try {
+    const token = localStorage.getItem('kayhostIdToken');
+    const resp = await fetch('/api/custom-domains/verify?id=' + id, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error);
+    alert(data.message || data.reason || 'Verified');
+    loadCustomDomains();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+async function deleteCustomDomain(id) {
+  if (!confirm('Remove this custom domain?')) return;
+  try {
+    const token = localStorage.getItem('kayhostIdToken');
+    const resp = await fetch('/api/custom-domains?id=' + id, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + token },
+    });
+    if (!resp.ok) { const e = await resp.json(); throw new Error(e.error); }
+    loadCustomDomains();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+// ====== MULTI-PAGE FOLDER UPLOAD ======
+// Augments the existing folder/file drop zone: when 2+ .html files are detected,
+// builds a `files` object and calls /api/multi-deploy instead of /api/deploy.
+async function uploadAsMultiPage(fileList) {
+  const files = Array.from(fileList);
+  const htmlFiles = files.filter(f => f.name.endsWith('.html') || f.name.endsWith('.htm'));
+
+  if (htmlFiles.length < 2) {
+    // Single HTML file — fall back to existing single-deploy behavior
+    return false;
+  }
+
+  // Build the files object (relative paths via webkitRelativePath)
+  const filesObj = {};
+  for (const f of files) {
+    // Skip files larger than 500 KB (Firestore doc limit safety)
+    if (f.size > 500 * 1024) {
+      console.warn('Skipping large file:', f.name, '(' + (f.size / 1024).toFixed(1) + ' KB)');
+      continue;
+    }
+    // Only include text files (HTML, CSS, JS, JSON, SVG, TXT)
+    const ext = f.name.split('.').pop().toLowerCase();
+    if (!['html', 'htm', 'css', 'js', 'mjs', 'json', 'svg', 'txt', 'xml'].includes(ext)) continue;
+
+    const path = f.webkitRelativePath || f.name;
+    const text = await f.text();
+    filesObj[path] = text;
+  }
+
+  const title = htmlFiles[0].name.replace(/\.(html?|htm)$/, '');
+  const browserId = localStorage.getItem('kayhostBrowserId') || crypto.randomUUID();
+  localStorage.setItem('kayhostBrowserId', browserId);
+
+  const ttl = localStorage.getItem('kayhostDefaultTtl') || '7d';
+
+  const resp = await fetch('/api/multi-deploy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ files: filesObj, title, ttl, browserId }),
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error || 'Multi-page deploy failed');
+
+  // data should have { id, url } where url is /p/:id/
+  alert(`Multi-page site deployed!\n\nLive URL: ${data.url}\nSite ID: ${data.id}\n\nPages:` + 
+        Object.keys(filesObj).filter(p => p.endsWith('.html')).map(p => '\n  /' + p.replace(/\.html?$/, '').replace(/index$/, '')));
+  return true;
+}
+
+// Hook into existing folder upload input (assumes it has id="folder-input" or class="folder-upload")
+document.addEventListener('DOMContentLoaded', () => {
+  const folderInputs = document.querySelectorAll('input[webkitdirectory], input[type="file"][multiple], .folder-upload input');
+  folderInputs.forEach(input => {
+    input.addEventListener('change', async (e) => {
+      if (e.target.files && e.target.files.length > 1) {
+        e.preventDefault();
+        try {
+          const handled = await uploadAsMultiPage(e.target.files);
+          if (handled) e.target.value = ''; // reset
+        } catch (err) {
+          console.error('Multi-page upload failed:', err);
+          // Fall through to existing handler
+        }
+      }
+    });
+  });
+});
+</script>
